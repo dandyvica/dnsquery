@@ -33,7 +33,7 @@ macro_rules! derive_enum {
 
             fn from_network_bytes(
                 &mut self,
-                v: &mut std::io::Cursor<Vec<u8>>,
+                v: &mut std::io::Cursor<&[u8]>,
             ) -> std::io::Result<()> {
                 let value = v.read_u16::<BigEndian>()?;
                 match <$t>::try_from(value) {

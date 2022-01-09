@@ -1,8 +1,6 @@
 //! All functions/trait to convert DNS structures to network order back & forth
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use std::io::BufRead;
 use std::io::Cursor;
-use std::io::Read;
 use std::io::Result;
 
 use crate::derive_enum;
@@ -17,7 +15,7 @@ pub trait ToFromNetworkOrder {
     fn to_network_bytes(&self, v: &mut Vec<u8>) -> Result<usize>;
 
     // copy from a network-order buffer to a structure
-    fn from_network_bytes(&mut self, v: &mut Cursor<Vec<u8>>) -> Result<()>;
+    fn from_network_bytes(&mut self, v: &mut Cursor<&[u8]>) -> Result<()>;
 }
 
 impl ToFromNetworkOrder for u8 {
@@ -37,12 +35,13 @@ impl ToFromNetworkOrder for u8 {
     /// use std::io::Cursor;
     /// use dnslib::network_order::ToFromNetworkOrder;
     ///
-    /// let mut buffer = Cursor::new(vec![0xFF]);
+    /// let b = vec![0xFF];
+    /// let mut buffer = Cursor::new(b.as_slice());
     /// let mut v = 0u8;
     /// assert!(v.from_network_bytes(&mut buffer).is_ok());
     /// assert_eq!(v, 255);
     /// ```
-    fn from_network_bytes(&mut self, v: &mut Cursor<Vec<u8>>) -> Result<()> {
+    fn from_network_bytes(&mut self, v: &mut Cursor<&[u8]>) -> Result<()> {
         *self = v.read_u8()?;
         Ok(())
     }
@@ -65,12 +64,13 @@ impl ToFromNetworkOrder for u16 {
     /// use std::io::Cursor;
     /// use dnslib::network_order::ToFromNetworkOrder;
     ///
-    /// let mut buffer = Cursor::new(vec![0x12, 0x34]);
+    /// let b = vec![0x12, 0x34];
+    /// let mut buffer = Cursor::new(b.as_slice());
     /// let mut v = 0u16;
     /// assert!(v.from_network_bytes(&mut buffer).is_ok());
     /// assert_eq!(v, 0x1234);
     /// ```
-    fn from_network_bytes(&mut self, v: &mut Cursor<Vec<u8>>) -> Result<()> {
+    fn from_network_bytes(&mut self, v: &mut Cursor<&[u8]>) -> Result<()> {
         *self = v.read_u16::<BigEndian>()?;
         Ok(())
     }
@@ -92,12 +92,13 @@ impl ToFromNetworkOrder for u32 {
     /// use std::io::Cursor;
     /// use dnslib::network_order::ToFromNetworkOrder;
     ///
-    /// let mut buffer = Cursor::new(vec![0x12, 0x34, 0x56, 0x78]);
+    /// let b = vec![0x12, 0x34, 0x56, 0x78];
+    /// let mut buffer = Cursor::new(b.as_slice());
     /// let mut v = 0u32;
     /// assert!(v.from_network_bytes(&mut buffer).is_ok());
     /// assert_eq!(v, 0x12345678);
     /// ```
-    fn from_network_bytes(&mut self, v: &mut Cursor<Vec<u8>>) -> Result<()> {
+    fn from_network_bytes(&mut self, v: &mut Cursor<&[u8]>) -> Result<()> {
         *self = v.read_u32::<BigEndian>()?;
         Ok(())
     }
@@ -120,12 +121,13 @@ impl ToFromNetworkOrder for i32 {
     /// use std::io::Cursor;
     /// use dnslib::network_order::ToFromNetworkOrder;
     ///
-    /// let mut buffer = Cursor::new(vec![0x12, 0x34, 0x56, 0x78]);
+    /// let b = vec![0x12, 0x34, 0x56, 0x78];
+    /// let mut buffer = Cursor::new(b.as_slice());
     /// let mut v = 0i32;
     /// assert!(v.from_network_bytes(&mut buffer).is_ok());
     /// assert_eq!(v, 0x12345678);
     /// ```
-    fn from_network_bytes(&mut self, v: &mut Cursor<Vec<u8>>) -> Result<()> {
+    fn from_network_bytes(&mut self, v: &mut Cursor<&[u8]>) -> Result<()> {
         *self = v.read_i32::<BigEndian>()?;
         Ok(())
     }
@@ -156,17 +158,19 @@ impl<T: ToFromNetworkOrder> ToFromNetworkOrder for Option<T> {
     /// use std::io::Cursor;
     /// use dnslib::network_order::ToFromNetworkOrder;
     ///
-    /// let mut buffer = Cursor::new(vec![0x12, 0x34, 0x56, 0x78]);
+    /// let b = vec![0x12, 0x34, 0x56, 0x78];
+    /// let mut buffer = Cursor::new(b.as_slice());
     /// let mut v: Option<u32> = None;
     /// assert!(v.from_network_bytes(&mut buffer).is_ok());
     /// assert!(v.is_none());
     ///
-    /// let mut buffer = Cursor::new(vec![0x12, 0x34, 0x56, 0x78]);
+    /// let b = vec![0x12, 0x34, 0x56, 0x78];
+    /// let mut buffer = Cursor::new(b.as_slice());
     /// let mut v: Option<u32> = Some(0u32);
     /// assert!(v.from_network_bytes(&mut buffer).is_ok());
     /// assert_eq!(v.unwrap(), 0x12345678);
     /// ```
-    fn from_network_bytes(&mut self, v: &mut Cursor<Vec<u8>>) -> Result<()> {
+    fn from_network_bytes(&mut self, v: &mut Cursor<&[u8]>) -> Result<()> {
         if self.is_none() {
             Ok(())
         } else {
@@ -201,17 +205,19 @@ impl<T: ToFromNetworkOrder, const N: usize> ToFromNetworkOrder for [T; N] {
     /// use std::io::Cursor;
     /// use dnslib::network_order::ToFromNetworkOrder;
     ///
-    /// let mut buffer = Cursor::new(vec![0x12, 0x34, 0x56, 0x78]);
+    /// let b = vec![0x12, 0x34, 0x56, 0x78];
+    /// let mut buffer = Cursor::new(b.as_slice());
     /// let mut v = [0u8;4];
     /// assert!(v.from_network_bytes(&mut buffer).is_ok());
     /// assert_eq!(v, [0x12_u8, 0x34, 0x56, 0x78]);
     ///
-    /// let mut buffer = Cursor::new(vec![0x12, 0x34, 0x56, 0x78]);
+    /// let b = vec![0x12, 0x34, 0x56, 0x78];
+    /// let mut buffer = Cursor::new(b.as_slice());
     /// let mut v = [0u16;2];
     /// assert!(v.from_network_bytes(&mut buffer).is_ok());
     /// assert_eq!(v, [0x1234_u16, 0x5678]);
     /// ```
-    fn from_network_bytes(&mut self, v: &mut Cursor<Vec<u8>>) -> Result<()> {
+    fn from_network_bytes(&mut self, v: &mut Cursor<&[u8]>) -> Result<()> {
         for x in self {
             x.from_network_bytes(v)?;
         }
@@ -247,12 +253,13 @@ where
     /// use std::io::Cursor;
     /// use dnslib::network_order::ToFromNetworkOrder;
     ///
-    /// let mut buffer = Cursor::new(vec![0x12, 0x34, 0x56, 0x78]);
+    /// let b = vec![0x12, 0x34, 0x56, 0x78];
+    /// let mut buffer = Cursor::new(b.as_slice());
     /// let mut v: Vec<u16> = Vec::new();
     /// assert!(v.from_network_bytes(&mut buffer).is_ok());
     /// assert_eq!(v, &[0x1234_u16, 0x5678]);
     /// ```
-    fn from_network_bytes(&mut self, v: &mut Cursor<Vec<u8>>) -> Result<()> {
+    fn from_network_bytes(&mut self, v: &mut Cursor<&[u8]>) -> Result<()> {
         // the length field holds the length of data field in bytes
         let length = v.get_ref().len() / std::mem::size_of::<T>();
         for _ in 0..length {
@@ -300,14 +307,15 @@ impl ToFromNetworkOrder for QName {
     /// use dnslib::network_order::ToFromNetworkOrder;
     /// use dnslib::rfc1035::QName;
     ///
-    /// let mut buffer = Cursor::new(vec![0x03, 0x77, 0x77, 0x77, 0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x02, 0x69, 0x65, 0x00]);
+    /// let b = vec![0x03, 0x77, 0x77, 0x77, 0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x02, 0x69, 0x65, 0x00];
+    /// let mut buffer = Cursor::new(b.as_slice());
     /// let mut qn = QName::default();
     /// assert!(qn.from_network_bytes(&mut buffer).is_ok());
     /// assert_eq!(qn.0.get(0).unwrap(), &(3_u8, Some("www".as_bytes().to_vec())));
     /// assert_eq!(qn.0.get(1).unwrap(), &(6_u8, Some("google".as_bytes().to_vec())));
     /// assert_eq!(qn.0.get(2).unwrap(), &(2_u8, Some("ie".as_bytes().to_vec())));
     /// ```
-    fn from_network_bytes(&mut self, v: &mut Cursor<Vec<u8>>) -> Result<()> {
+    fn from_network_bytes(&mut self, v: &mut Cursor<&[u8]>) -> Result<()> {
         // sanity check: last byte should by the sentinel
         debug_assert!(v.get_mut().last() == Some(&0u8));
 
@@ -389,7 +397,8 @@ impl ToFromNetworkOrder for DNSPacketFlags {
     /// use dnslib::network_order::ToFromNetworkOrder;
     /// use dnslib::rfc1035::{DNSPacketFlags, ResponseCode, OpCode};
     ///
-    /// let mut buffer = Cursor::new(vec![0b1000_1111, 0b1111_0000]);
+    /// let b = vec![0b1000_1111, 0b1111_0000];
+    /// let mut buffer = Cursor::new(b.as_slice());
     /// let mut v = DNSPacketFlags::default();
     /// assert!(v.from_network_bytes(&mut buffer).is_ok());
     /// println!("{:?}", v);
@@ -402,7 +411,7 @@ impl ToFromNetworkOrder for DNSPacketFlags {
     /// assert_eq!(v.z, 0b111);
     /// assert_eq!(v.response_code, ResponseCode::NoError);
     /// ```
-    fn from_network_bytes(&mut self, v: &mut Cursor<Vec<u8>>) -> Result<()> {
+    fn from_network_bytes(&mut self, v: &mut Cursor<&[u8]>) -> Result<()> {
         // read as u16
         let flags = v.read_u16::<BigEndian>()?;
 
@@ -483,7 +492,8 @@ impl ToFromNetworkOrder for DNSPacketHeader {
     /// use dnslib::network_order::ToFromNetworkOrder;
     /// use dnslib::rfc1035::{DNSPacketHeader, DNSPacketFlags, ResponseCode, OpCode};
     ///
-    /// let mut buffer = Cursor::new(vec![0x12, 0x34, 0b1000_1111, 0b1111_0000, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34]);
+    /// let b = vec![0x12, 0x34, 0b1000_1111, 0b1111_0000, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34];
+    /// let mut buffer = Cursor::new(b.as_slice());
     /// let mut packet = DNSPacketHeader::default();
     /// assert!(packet.from_network_bytes(&mut buffer).is_ok());
     /// assert_eq!(packet.id, 0x1234);
@@ -492,7 +502,7 @@ impl ToFromNetworkOrder for DNSPacketHeader {
     /// assert_eq!(packet.ns_count, 0x1234);
     /// assert_eq!(packet.ar_count, 0x1234);
     /// ```
-    fn from_network_bytes(&mut self, v: &mut Cursor<Vec<u8>>) -> Result<()> {
+    fn from_network_bytes(&mut self, v: &mut Cursor<&[u8]>) -> Result<()> {
         self.id.from_network_bytes(v)?;
         self.flags.from_network_bytes(v)?;
         self.qd_count.from_network_bytes(v)?;
@@ -531,7 +541,7 @@ impl ToFromNetworkOrder for DNSQuestion {
         Ok(length)
     }
 
-    fn from_network_bytes(&mut self, v: &mut Cursor<Vec<u8>>) -> Result<()> {
+    fn from_network_bytes(&mut self, v: &mut Cursor<&[u8]>) -> Result<()> {
         self.name.from_network_bytes(v)?;
         self.r#type.from_network_bytes(v)?;
         self.class.from_network_bytes(v)?;
@@ -549,7 +559,7 @@ where
         Ok(length)
     }
 
-    fn from_network_bytes(&mut self, v: &mut Cursor<Vec<u8>>) -> Result<()> {
+    fn from_network_bytes(&mut self, v: &mut Cursor<&[u8]>) -> Result<()> {
         self.header.from_network_bytes(v)?;
         self.data.from_network_bytes(v)?;
         Ok(())
