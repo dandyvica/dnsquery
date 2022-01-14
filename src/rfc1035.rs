@@ -1,6 +1,13 @@
 //! Base structures for DNS messages. Taken from https://datatracker.ietf.org/doc/html/rfc1035
 //!
-use std::str::FromStr;
+use std::fmt;
+use std::str;
+
+use crate::error::{DNSError, DNSResult};
+use crate::util::is_sentinel;
+use crate::network_order::ToFromNetworkOrder;
+
+use dns_derive::DnsDerive;
 
 // DNS packet with data
 #[derive(Debug, Default)]
@@ -8,6 +15,8 @@ pub struct DNSPacket<T> {
     pub header: DNSPacketHeader,
     pub data: T,
 }
+
+pub const MAX_DNS_PACKET_SIZE: usize = 512;
 
 // DNS packet header: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.1
 #[derive(Debug, Default)]
@@ -27,11 +36,30 @@ pub struct DNSPacketHeader {
                        // resource records in the additional records section.
 }
 
+impl fmt::Display for DNSPacketHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // output depends on whether it's a query or a response
+        // because some fields are unnecessary when Query or Response
+        write!(f, "ID:{:X} ", self.id)?;
+        write!(f, "FLAGS:{} ", self.flags)?;
+
+        if self.flags.packet_type == PacketType::Query {
+            write!(f, "QDCOUNT:{}", self.qd_count)
+        } else {
+            write!(
+                f,
+                "QDCOUNT:{}, ANCOUNT:{} NSCOUNT:{} ARCOUNT:{}",
+                self.qd_count, self.an_count, self.ns_count, self.ar_count
+            )
+        }
+    }
+}
+
 // Flags: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.1
 #[derive(Debug, Default)]
 pub struct DNSPacketFlags {
-    pub is_response: bool, // A one bit field that specifies whether this message is a query (0), or a response (1).
-    pub op_code: OpCode,   // A four bit field that specifies kind of query in this
+    pub packet_type: PacketType, // A one bit field that specifies whether this message is a query (0), or a response (1).
+    pub op_code: OpCode,         // A four bit field that specifies kind of query in this
     //  message.  This value is set by the originator of a query
     //  and copied into the response.  The values are:
     // 0               a standard query (QUERY)
@@ -81,6 +109,66 @@ pub struct DNSPacketFlags {
                //                a particular operation (e.g., zone
                //                transfer) for particular data.
                //6-15            Reserved for future use.
+}
+
+impl fmt::Display for DNSPacketFlags {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // output depends on whether it's a query or a response
+        // because some fields are unnecessary when Query or Response
+        write!(f, "{:?} ", self.packet_type)?;
+
+        if self.packet_type == PacketType::Query {
+            write!(
+                f,
+                "OPCODE:{:?} RD:{}",
+                self.op_code, self.is_recursion_desired
+            )
+        } else {
+            write!(
+                f,
+                "OPCODE:{:?} TC:{} RA:{} RCODE:{:?}",
+                self.op_code, self.is_truncated, self.is_recursion_available, self.response_code
+            )
+        }
+    }
+}
+
+/// The flags' first bit is 0 or 1 meaning a question or a response. Better is to use an enum which is
+/// both clearer and type oriented.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[repr(u8)]
+pub enum PacketType {
+    Query = 0,
+    Response = 1,
+}
+
+impl Default for PacketType {
+    fn default() -> Self {
+        PacketType::Query
+    }
+}
+
+impl TryFrom<u16> for PacketType {
+    type Error = String;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(PacketType::Query),    //[RFC1035]
+            1 => Ok(PacketType::Response), // (Inverse Query, OBSOLETE)	[RFC3425]
+            _ => Err(format!("Invalid PacketType value: {}!", value)),
+        }
+    }
+}
+
+impl fmt::Display for PacketType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // output depends on whether it's a query or a response
+        // because some fields are unnecessary when Query or Response
+        match *self {
+            PacketType::Query => write!(f, "QUERY"),
+            PacketType::Response => write!(f, "RESPONSE"),
+        }
+    }
 }
 
 // op codes: https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-5
@@ -189,11 +277,12 @@ impl TryFrom<u16> for ResponseCode {
 }
 
 // RR format
-pub struct DnsResponse {
-    name: Vec<u8>, // an owner name, i.e., the name of the node to which this resource record pertains.
-    r#type: QType, // two octets containing one of the RR TYPE codes.
-    class: QClass, // two octets containing one of the RR CLASS codes.
-    ttl: i32,      //   a bit = 32 signed integer that specifies the time interval
+#[derive(Debug, Default)]
+pub struct DnsResponse<'a> {
+    pub name: DomainName<'a>, // an owner name, i.e., the name of the node to which this resource record pertains.
+    pub r#type: QType,        // two octets containing one of the RR TYPE codes.
+    pub class: QClass,        // two octets containing one of the RR CLASS codes.
+    pub ttl: u32,             //   a bit = 32 signed integer that specifies the time interval
     //   that the resource record may be cached before the source
     //   of the information should again be consulted.  Zero
     //   values are interpreted to mean that the RR can only be
@@ -201,10 +290,22 @@ pub struct DnsResponse {
     //   cached.  For example, SOA records are always distributed
     //   with a zero TTL to prohibit caching.  Zero values can
     //   also be used for extremely volatile data.
-    rd_length: u16, // an unsigned 16 bit integer that specifies the length in octets of the RDATA field.
-    r_data: Vec<u8>, //  a variable length string of octets that describes the
-                    //  resource.  The format of this information varies
-                    //  according to the TYPE and CLASS of the resource record.
+    pub rd_length: u16, // an unsigned 16 bit integer that specifies the length in octets of the RDATA field.
+                        //pub r_data: Vec<u8>, //  a variable length string of octets that describes the
+                        //  resource.  The format of this information varies
+                        //  according to the TYPE and CLASS of the resource record.
+}
+
+impl<'a> fmt::Display for DnsResponse<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // output depends on whether it's a query or a response
+        // because some fields are unnecessary when Query or Response
+        write!(
+            f,
+            "NAME:{} TYPE:{:?} CLASS:{:?} TTL:{} RDLENGTH={}",
+            self.name, self.r#type, self.class, self.ttl, self.rd_length
+        )
+    }
 }
 
 // RR type codes: https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-4
@@ -461,102 +562,107 @@ impl TryFrom<u16> for QClass {
     }
 }
 
-// QName definition: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.2
+// Domain name: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.4
 #[derive(Debug, Default)]
-pub struct QName(pub Vec<(u8, Option<Vec<u8>>)>);
+pub struct DomainName<'a>(pub Vec<&'a str>);
 
-impl QName {
+impl<'a> DomainName<'a> {
     /// ```
-    /// use dnslib::rfc1035::QName;
+    /// use dnslib::rfc1035::DomainName;
+    /// use dnslib::network_order::{SAMPLE_DOMAIN, SAMPLE_SLICE};
     ///
-    /// let qn = QName::from_label_list(&["www", "example", "com"]);
-    /// assert_eq!(qn.0.len(), 4);
-    /// assert_eq!(qn.0.get(0).unwrap(), &(3_u8, Some("www".as_bytes().to_vec())));
-    /// assert_eq!(qn.0.get(1).unwrap(), &(7_u8, Some("example".as_bytes().to_vec())));
-    /// assert_eq!(qn.0.get(2).unwrap(), &(3_u8, Some("com".as_bytes().to_vec())));
-    /// ```    
-    pub fn from_label_list(s: &[&str]) -> Self {
-        let mut qname = Vec::new();
-
-        for label in s {
-            // labels must be shorter than 63 chars: https://datatracker.ietf.org/doc/html/rfc1035#section-2.3.4
-            debug_assert!(label.len() <= 63);
-
-            qname.push((label.len() as u8, Some(label.as_bytes().to_vec())));
-        }
-
-        // add the sentinel length
-        qname.push((0_u8, None));
-
-        QName(qname)
-    }
-
-    /// ```
-    /// use dnslib::rfc1035::QName;
+    /// let mut dn = DomainName::default();
+    /// dn.from_slice(SAMPLE_SLICE.as_slice());
     ///
-    /// let qn = QName::from_vec(&[3, 97, 97, 97, 2, 98, 98, 1, 99, 0]);
-    /// assert_eq!(qn.0.len(), 4);
-    /// assert_eq!(qn.0.get(0).unwrap(), &(3_u8, Some("aaa".as_bytes().to_vec())));
-    /// assert_eq!(qn.0.get(1).unwrap(), &(2_u8, Some("bb".as_bytes().to_vec())));
-    /// assert_eq!(qn.0.get(2).unwrap(), &(1_u8, Some("c".as_bytes().to_vec())));
+    /// assert_eq!(dn.0.len(), 3);
+    /// assert_eq!(dn.0.get(0).unwrap(), &"www");
+    /// assert_eq!(dn.0.get(1).unwrap(), &"google");
+    /// assert_eq!(dn.0.get(2).unwrap(), &"ie");
     /// ```    
-    pub fn from_vec(v: &[u8]) -> Self {
-        // sanity check: last byte should by the sentinel
-        debug_assert!(v.last() == Some(&0u8));
-
-        let mut qname = Vec::new();
+    pub fn from_slice(&mut self, value: &'a [u8]) -> DNSResult<()> {
+        //dbg!(value[0]);
+        //println!("slice====> {:X?}", value);
 
         // loop through the vector
         let mut index = 0usize;
 
         loop {
-            let size = v[index];
+            let size = value[index];
 
             // if we've reached the sentinel, exit
-            if size == 0 {
+            if is_sentinel(size) {
                 break;
             }
 
-            qname.push((size, Some(v[index + 1..index + 1 + size as usize].to_vec())));
+            self.0
+                .push(str::from_utf8(&value[index + 1..index + 1 + size as usize]).unwrap());
 
             // adjust length
             index += size as usize + 1;
         }
 
-        // add the sentinel length
-        qname.push((0_u8, None));
-
-        QName(qname)
+        Ok(())
     }
 }
 
-// impl<'a> FromStr for QName<'a> {
-//     type Err = String;
+/// ```
+/// use dnslib::rfc1035::DomainName;
+///
+/// let dn = DomainName::try_from("www.example.com").unwrap();
+/// assert_eq!(dn.0.len(), 3);
+/// assert_eq!(dn.0.get(0).unwrap(), &"www");
+/// assert_eq!(dn.0.get(1).unwrap(), &"example");
+/// assert_eq!(dn.0.get(2).unwrap(), &"com");
+/// ```
+impl<'a> TryFrom<&'a str> for DomainName<'a> {
+    type Error = String;
 
-//     // s is supposed to be a FQDN
-//     fn from_str<'b>(s: &'b str) -> Result<Self, Self::Err> {
-//         let label_list: Vec<_> = s.split(".").collect();
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        // split input into individual labels
+        let label_list: Vec<&'a str> = value.split('.').collect();
 
-//         Ok(QName::from_label_list(&label_list))
-//     }
-// }
+        // check whether label's length is <= 63
+        for label in &label_list {
+            if label.as_bytes().len() > 63 {
+                return Err(format!("label <{}> length is over 63 characters", label));
+            }
+        }
 
-// impl QName {
-//     pub fn from_str(s: &[&str]) -> Self {
-//         let mut qname = Vec::new();
+        Ok(DomainName(label_list))
+    }
+}
 
-//         for label in s {
-//             qname.push((label.len() as u8, label.as_bytes()));
-//         }
+/// ```
+/// use dnslib::rfc1035::DomainName;
+/// use dnslib::network_order::{SAMPLE_DOMAIN, SAMPLE_SLICE};
+///
+/// let mut dn = DomainName::default();
+/// dn.from_slice(SAMPLE_SLICE.as_slice());
+///
+/// assert_eq!(dn.to_string(), "www.google.ie");
+/// ```
+impl<'a> fmt::Display for DomainName<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.join("."))
+    }
+}
 
-//         QName(qname)
-//     }
-// }
+pub type CharacterString<'a> = &'a str;
 
 // Question structure
 #[derive(Debug, Default)]
-pub struct DNSQuestion {
-    pub name: QName,
+pub struct DNSQuestion<'a> {
+    pub name: DomainName<'a>,
     pub r#type: QType,
     pub class: QClass,
+}
+
+// A RR
+pub type IPAddressV4 = u32;
+
+// CNAME RR
+#[derive(Debug, Default, DnsDerive)]
+pub struct HINFO<'a> {
+    pub cpu: CharacterString<'a>,
+    pub os: CharacterString<'a>,
 }

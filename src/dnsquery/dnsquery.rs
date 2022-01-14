@@ -4,41 +4,103 @@ use std::net::UdpSocket;
 
 // our DNS library
 use dnslib::{
-    network_order::ToFromNetworkOrder,
-    rfc1035::{DNSPacket, DNSPacketHeader, DNSQuestion},
+    error::DNSResult,
+    network_order::{
+        ToFromNetworkOrder,
+    },
+    rfc1035::{DNSPacket, DNSPacketHeader, DNSQuestion, DnsResponse, QType, HINFO, MAX_DNS_PACKET_SIZE},
+    util::pretty_cursor,
 };
 
 mod dnsrequest;
 use dnsrequest::DNSRequest;
 
-fn main() -> std::io::Result<()> {
+mod args;
+use args::CliOptions;
+
+fn main() -> DNSResult<()> {
+    // manage arguments from command line
+    let options = CliOptions::options();
+    println!("{:?}", options);
+
     // bind to an ephermeral local port
     let socket = UdpSocket::bind("0.0.0.0:0")?;
 
+    // build and send query
+    send_query(&socket, &options.host, options.qtype)?;
+
+    // receive request
+    receive_answer(&socket)?;
+
+    Ok(())
+}
+
+fn send_query(socket: &UdpSocket, endpoint: &str, qtype: QType) -> DNSResult<()> {
     // build a new DNS packet
     let mut dns_packet = DNSPacket::<DNSQuestion>::default();
-    DNSRequest::init_request(&mut dns_packet);
-    println!("{:#?}", dns_packet);
+    DNSRequest::init_request(&mut dns_packet, qtype);
+    println!("{}", dns_packet.header);
 
     // convert to network bytes
     let mut buffer: Vec<u8> = Vec::new();
     dns_packet.to_network_bytes(&mut buffer)?;
 
     // send packet through the wire
-    //let message = String::from("hello").into_bytes();
-    socket.send_to(&buffer, "8.8.8.8:53")?;
+    let dest = format!("{}:53", endpoint);
+    socket.send_to(&buffer, "1.1.1.1:53")?;
 
+    Ok(())
+}
+
+fn receive_answer(socket: &UdpSocket) -> DNSResult<()> {
     // receive packet from endpoint
-    let mut buf = [0; 512];
-    match socket.recv(&mut buf) {
-        Ok(received) => println!("received {} bytes {:X?}", received, &buf[..received]),
-        Err(e) => println!("recv function failed: {:?}", e),
+    let mut buf = [0; MAX_DNS_PACKET_SIZE];
+    let received = socket.recv(&mut buf)?;
+
+    // cursor is necessary to use the ToFromNetworkOrder trait
+    let mut cursor = Cursor::new(&buf[..received]);
+
+    // get the DNS header
+    let mut dns_header_response = DNSPacketHeader::default();
+    dns_header_response.from_network_bytes(&mut cursor)?;
+    println!("{}", dns_header_response);
+
+    // if question is still in the response, skip it
+    if dns_header_response.qd_count >= 1 {
+        let mut question = DNSQuestion::default();
+        for _ in 0..dns_header_response.qd_count {
+            question.from_network_bytes(&mut cursor)?;
+        }
     }
 
-    // checkout DNS header
-    let mut dns_header = DNSPacketHeader::default();
-    let mut cursor = Cursor::new(&buf[0..12]);
-    dns_header.from_network_bytes(&mut cursor);
+    // display data according to QType
+    display_data(&mut cursor)?;
+
+    pretty_cursor(&cursor);
+
+    Ok(())
+}
+
+fn display_data<'a>(cursor: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
+    // receive data
+    let mut response = DnsResponse::default();
+    response.from_network_bytes(cursor)?;
+
+    // check out RR
+    println!("qtype={:?}", response.r#type);
+    match response.r#type {
+        QType::A => {
+            let mut ip = 0u32;
+            ip.from_network_bytes(cursor)?;
+            println!("ip={}", std::net::Ipv4Addr::from(ip));
+        }
+        QType::HINFO => {
+            let mut hinfo = HINFO::default();
+            hinfo.from_network_bytes(cursor)?;
+            println!("HINFO: {:?}", hinfo);
+        }
+        _ => unimplemented!(),
+    }
 
     Ok(())
 }
