@@ -15,7 +15,7 @@ pub fn pretty_cursor<'a>(buffer: &Cursor<&'a [u8]>) {
     eprintln!("position={}", buffer.position());
 
     let mut i = 0usize;
-    for x in *reference {
+    for _ in *reference {
         eprint!("{:02} ", i);
         i += 1;
     }

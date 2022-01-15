@@ -5,10 +5,10 @@ use std::net::UdpSocket;
 // our DNS library
 use dnslib::{
     error::DNSResult,
-    network_order::{
-        ToFromNetworkOrder,
+    network_order::ToFromNetworkOrder,
+    rfc1035::{
+        DNSPacket, DNSPacketHeader, DNSQuestion, DnsResponse, QType, HINFO, MAX_DNS_PACKET_SIZE,
     },
-    rfc1035::{DNSPacket, DNSPacketHeader, DNSQuestion, DnsResponse, QType, HINFO, MAX_DNS_PACKET_SIZE},
     util::pretty_cursor,
 };
 
@@ -21,13 +21,16 @@ use args::CliOptions;
 fn main() -> DNSResult<()> {
     // manage arguments from command line
     let options = CliOptions::options();
-    println!("{:?}", options);
 
+    if options.debug {
+        eprintln!("{:#?}", options);
+    }
+    
     // bind to an ephermeral local port
     let socket = UdpSocket::bind("0.0.0.0:0")?;
 
     // build and send query
-    send_query(&socket, &options.host, options.qtype)?;
+    send_query(&socket, &options.host, options.qtype, options.debug)?;
 
     // receive request
     receive_answer(&socket)?;
@@ -35,10 +38,14 @@ fn main() -> DNSResult<()> {
     Ok(())
 }
 
-fn send_query(socket: &UdpSocket, endpoint: &str, qtype: QType) -> DNSResult<()> {
+fn send_query(socket: &UdpSocket, endpoint: &str, qtype: QType, debug:bool) -> DNSResult<()> {
     // build a new DNS packet
     let mut dns_packet = DNSPacket::<DNSQuestion>::default();
     DNSRequest::init_request(&mut dns_packet, qtype);
+    if debug {
+        eprintln!("{:#?}", dns_packet);
+    } 
+
     println!("{}", dns_packet.header);
 
     // convert to network bytes

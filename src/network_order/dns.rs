@@ -8,11 +8,22 @@ use crate::error::{DNSError, DNSResult};
 use crate::network_order::ToFromNetworkOrder;
 use crate::rfc1035::{
     CharacterString, DNSPacket, DNSPacketFlags, DNSPacketHeader, DNSQuestion, DnsResponse,
-    DomainName, OpCode, PacketType, QClass, QType, ResponseCode, HINFO,
+    DomainName, OpCode, PacketType, QClass, QType, ResponseCode,
 };
 
+// constants data used for tests
+// cfg(doctest) doesn't work as expected
+pub const SAMPLE_DOMAIN: &'static str = "www.google.ie";
+pub const SAMPLE_SLICE: &[u8; 15] = &[
+    0x03, 0x77, 0x77, 0x77, 0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x02, 0x69, 0x65, 0x00,
+];
+pub const SAMPLE_SLICE_EXTENDED: &[u8; 19] = &[
+    0x03, 0x77, 0x77, 0x77, 0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x02, 0x69, 0x65, 0x00, 0x00,
+    0x01, 0x00, 0x01,
+];
+
 impl<'a> ToFromNetworkOrder<'a> for CharacterString<'a> {
-    fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
+    fn to_network_bytes(&self, _buffer: &mut Vec<u8>) -> Result<usize> {
         Ok(0)
     }
 
@@ -124,7 +135,7 @@ impl<'a> ToFromNetworkOrder<'a> for DomainName<'a> {
         debug_assert!(sentinel == 0 || sentinel >= 192);
 
         // where are we now ?
-        let mut end_position = buffer.position() as usize;
+        let end_position = buffer.position() as usize;
         //dbg!(end_position);
 
         // at the end of the previous iteration, the sentinel is either 0 which means no compression
@@ -167,7 +178,7 @@ impl<'a> ToFromNetworkOrder<'a> for DomainName<'a> {
                 self.from_slice(&buffer.get_ref()[pointer..])?;
             }
 
-            end_position += 1;
+            //end_position += 1;
         } else {
             panic!("unexpected sentinel value <{}>", sentinel);
         }
@@ -277,73 +288,73 @@ impl<'a> ToFromNetworkOrder<'a> for DNSPacketFlags {
     }
 }
 
-impl<'a> ToFromNetworkOrder<'a> for DNSPacketHeader {
-    /// ```
-    /// use dnslib::network_order::ToFromNetworkOrder;
-    /// use dnslib::rfc1035::{DNSPacketFlags, DNSPacketHeader, ResponseCode, OpCode, PacketType};
-    ///
-    /// let flags = DNSPacketFlags {
-    ///     packet_type: PacketType::Response,
-    ///     op_code: OpCode::IQuery,
-    ///     is_authorative_answer: true,
-    ///     is_truncated: true,
-    ///     is_recursion_desired: true,
-    ///     is_recursion_available: true,
-    ///     z: 0b111,
-    ///     response_code: ResponseCode::NoError
-    /// };
-    ///
-    /// let packet = DNSPacketHeader {
-    ///     id: 0x1234,
-    ///     flags: flags,
-    ///     qd_count: 0x1234,
-    ///     an_count: 0x1234,
-    ///     ns_count: 0x1234,
-    ///     ar_count: 0x1234,
-    /// };
-    ///
-    /// let mut buffer: Vec<u8> = Vec::new();
-    /// assert!(packet.to_network_bytes(&mut buffer).is_ok());
-    /// assert_eq!(buffer, &[0x12, 0x34, 0b1000_1111, 0b1111_0000, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34]);
-    /// ```    
-    fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
-        self.id.to_network_bytes(buffer)?;
-        self.flags.to_network_bytes(buffer)?;
-        self.qd_count.to_network_bytes(buffer)?;
-        self.an_count.to_network_bytes(buffer)?;
-        self.ns_count.to_network_bytes(buffer)?;
-        self.ar_count.to_network_bytes(buffer)?;
-        Ok(12)
-    }
+// impl<'a> ToFromNetworkOrder<'a> for DNSPacketHeader {
+//     /// ```
+//     /// use dnslib::network_order::ToFromNetworkOrder;
+//     /// use dnslib::rfc1035::{DNSPacketFlags, DNSPacketHeader, ResponseCode, OpCode, PacketType};
+//     ///
+//     /// let flags = DNSPacketFlags {
+//     ///     packet_type: PacketType::Response,
+//     ///     op_code: OpCode::IQuery,
+//     ///     is_authorative_answer: true,
+//     ///     is_truncated: true,
+//     ///     is_recursion_desired: true,
+//     ///     is_recursion_available: true,
+//     ///     z: 0b111,
+//     ///     response_code: ResponseCode::NoError
+//     /// };
+//     ///
+//     /// let packet = DNSPacketHeader {
+//     ///     id: 0x1234,
+//     ///     flags: flags,
+//     ///     qd_count: 0x1234,
+//     ///     an_count: 0x1234,
+//     ///     ns_count: 0x1234,
+//     ///     ar_count: 0x1234,
+//     /// };
+//     ///
+//     /// let mut buffer: Vec<u8> = Vec::new();
+//     /// assert!(packet.to_network_bytes(&mut buffer).is_ok());
+//     /// assert_eq!(buffer, &[0x12, 0x34, 0b1000_1111, 0b1111_0000, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34]);
+//     /// ```    
+//     fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
+//         self.id.to_network_bytes(buffer)?;
+//         self.flags.to_network_bytes(buffer)?;
+//         self.qd_count.to_network_bytes(buffer)?;
+//         self.an_count.to_network_bytes(buffer)?;
+//         self.ns_count.to_network_bytes(buffer)?;
+//         self.ar_count.to_network_bytes(buffer)?;
+//         Ok(12)
+//     }
 
-    /// ```
-    /// use std::io::Cursor;
-    /// use dnslib::network_order::ToFromNetworkOrder;
-    /// use dnslib::rfc1035::{DNSPacketHeader, DNSPacketFlags, ResponseCode, OpCode};
-    ///
-    /// let b = vec![0x12, 0x34, 0b1000_1111, 0b1111_0000, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34];
-    /// let mut buffer = Cursor::new(b.as_slice());
-    /// let mut packet = DNSPacketHeader::default();
-    /// assert!(packet.from_network_bytes(&mut buffer).is_ok());
-    /// assert_eq!(packet.id, 0x1234);
-    /// assert_eq!(packet.qd_count, 0x1234);
-    /// assert_eq!(packet.an_count, 0x1234);
-    /// assert_eq!(packet.ns_count, 0x1234);
-    /// assert_eq!(packet.ar_count, 0x1234);
-    /// ```
-    fn from_network_bytes(&mut self, buffer: &mut Cursor<&[u8]>) -> DNSResult<()> {
-        self.id.from_network_bytes(buffer)?;
-        self.flags.from_network_bytes(buffer)?;
-        self.qd_count.from_network_bytes(buffer)?;
-        self.an_count.from_network_bytes(buffer)?;
-        self.ns_count.from_network_bytes(buffer)?;
-        self.ar_count.from_network_bytes(buffer)?;
-        Ok(())
-    }
-}
+//     /// ```
+//     /// use std::io::Cursor;
+//     /// use dnslib::network_order::ToFromNetworkOrder;
+//     /// use dnslib::rfc1035::{DNSPacketHeader, DNSPacketFlags, ResponseCode, OpCode};
+//     ///
+//     /// let b = vec![0x12, 0x34, 0b1000_1111, 0b1111_0000, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34];
+//     /// let mut buffer = Cursor::new(b.as_slice());
+//     /// let mut packet = DNSPacketHeader::default();
+//     /// assert!(packet.from_network_bytes(&mut buffer).is_ok());
+//     /// assert_eq!(packet.id, 0x1234);
+//     /// assert_eq!(packet.qd_count, 0x1234);
+//     /// assert_eq!(packet.an_count, 0x1234);
+//     /// assert_eq!(packet.ns_count, 0x1234);
+//     /// assert_eq!(packet.ar_count, 0x1234);
+//     /// ```
+//     fn from_network_bytes(&mut self, buffer: &mut Cursor<&[u8]>) -> DNSResult<()> {
+//         self.id.from_network_bytes(buffer)?;
+//         self.flags.from_network_bytes(buffer)?;
+//         self.qd_count.from_network_bytes(buffer)?;
+//         self.an_count.from_network_bytes(buffer)?;
+//         self.ns_count.from_network_bytes(buffer)?;
+//         self.ar_count.from_network_bytes(buffer)?;
+//         Ok(())
+//     }
+// }
 
 impl<'a> ToFromNetworkOrder<'a> for DnsResponse<'a> {
-    fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
+    fn to_network_bytes(&self, _buffer: &mut Vec<u8>) -> Result<usize> {
         Ok(0)
     }
 
@@ -357,56 +368,56 @@ impl<'a> ToFromNetworkOrder<'a> for DnsResponse<'a> {
     }
 }
 
-impl<'a> ToFromNetworkOrder<'a> for DNSQuestion<'a> {
-    /// ```
-    /// use dnslib::network_order::ToFromNetworkOrder;
-    /// use dnslib::rfc1035::{DNSQuestion, QClass, DomainName, QType};
-    /// use dnslib::network_order::{SAMPLE_DOMAIN, SAMPLE_SLICE_EXTENDED};
-    ///
-    /// let mut buffer: Vec<u8> = Vec::new();
-    /// let qn = DomainName::try_from(SAMPLE_DOMAIN).unwrap();
-    ///
-    /// let question = DNSQuestion {
-    ///     name: qn,
-    ///     r#type: QType::A,
-    ///     class: QClass::IN,
-    /// };
-    ///
-    /// let converted = question.to_network_bytes(&mut buffer);
-    /// assert!(converted.is_ok());
-    /// let length = converted.unwrap();
-    /// assert_eq!(length, 19);
-    ///
-    /// assert_eq!(&buffer, SAMPLE_SLICE_EXTENDED);
-    /// ```
-    fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
-        let mut length = self.name.to_network_bytes(buffer)?;
-        length += self.r#type.to_network_bytes(buffer)?;
-        length += self.class.to_network_bytes(buffer)?;
-        Ok(length)
-    }
+// impl<'a> ToFromNetworkOrder<'a> for DNSQuestion<'a> {
+//     /// ```
+//     /// use dnslib::network_order::ToFromNetworkOrder;
+//     /// use dnslib::rfc1035::{DNSQuestion, QClass, DomainName, QType};
+//     /// use dnslib::network_order::{SAMPLE_DOMAIN, SAMPLE_SLICE_EXTENDED};
+//     ///
+//     /// let mut buffer: Vec<u8> = Vec::new();
+//     /// let qn = DomainName::try_from(SAMPLE_DOMAIN).unwrap();
+//     ///
+//     /// let question = DNSQuestion {
+//     ///     name: qn,
+//     ///     r#type: QType::A,
+//     ///     class: QClass::IN,
+//     /// };
+//     ///
+//     /// let converted = question.to_network_bytes(&mut buffer);
+//     /// assert!(converted.is_ok());
+//     /// let length = converted.unwrap();
+//     /// assert_eq!(length, 19);
+//     ///
+//     /// assert_eq!(&buffer, SAMPLE_SLICE_EXTENDED);
+//     /// ```
+//     fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
+//         let mut length = self.name.to_network_bytes(buffer)?;
+//         length += self.r#type.to_network_bytes(buffer)?;
+//         length += self.class.to_network_bytes(buffer)?;
+//         Ok(length)
+//     }
 
-    /// ```
-    /// use std::io::Cursor;
-    /// use dnslib::network_order::ToFromNetworkOrder;
-    /// use dnslib::rfc1035::{DNSQuestion, QType, QClass};
-    /// use dnslib::network_order::{SAMPLE_DOMAIN, SAMPLE_SLICE, SAMPLE_SLICE_EXTENDED};
-    ///
-    /// let mut buffer = Cursor::new(SAMPLE_SLICE_EXTENDED.as_slice());
-    /// let mut question = DNSQuestion::default();
-    ///
-    /// assert!(question.from_network_bytes(&mut buffer).is_ok());
-    /// assert_eq!(&question.name.to_string(), SAMPLE_DOMAIN);
-    /// assert_eq!(question.r#type, QType::A);
-    /// assert_eq!(question.class, QClass::IN);
-    /// ```    
-    fn from_network_bytes(&mut self, buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
-        self.name.from_network_bytes(buffer)?;
-        self.r#type.from_network_bytes(buffer)?;
-        self.class.from_network_bytes(buffer)?;
-        Ok(())
-    }
-}
+//     /// ```
+//     /// use std::io::Cursor;
+//     /// use dnslib::network_order::ToFromNetworkOrder;
+//     /// use dnslib::rfc1035::{DNSQuestion, QType, QClass};
+//     /// use dnslib::network_order::{SAMPLE_DOMAIN, SAMPLE_SLICE, SAMPLE_SLICE_EXTENDED};
+//     ///
+//     /// let mut buffer = Cursor::new(SAMPLE_SLICE_EXTENDED.as_slice());
+//     /// let mut question = DNSQuestion::default();
+//     ///
+//     /// assert!(question.from_network_bytes(&mut buffer).is_ok());
+//     /// assert_eq!(&question.name.to_string(), SAMPLE_DOMAIN);
+//     /// assert_eq!(question.r#type, QType::A);
+//     /// assert_eq!(question.class, QClass::IN);
+//     /// ```    
+//     fn from_network_bytes(&mut self, buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
+//         self.name.from_network_bytes(buffer)?;
+//         self.r#type.from_network_bytes(buffer)?;
+//         self.class.from_network_bytes(buffer)?;
+//         Ok(())
+//     }
+// }
 
 impl<'a, T> ToFromNetworkOrder<'a> for DNSPacket<T>
 where
@@ -422,5 +433,149 @@ where
         self.header.from_network_bytes(buffer)?;
         self.data.from_network_bytes(buffer)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Seek, SeekFrom};
+
+    use super::*;
+
+    // sample is taken from real data using wireshark to be able to test
+    // domain name compression
+    const SAMPLE: &[u8] = &[
+        0x41, 0x2a, 0x81, 0x80, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x06, 0x67, 0x6f,
+        0x6f, 0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f, 0x6d, 0x00, 0x00, 0x05, 0x00, 0x01, 0xc0, 0x0c,
+        0x00, 0x06, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x26, 0x03, 0x6e, 0x73, 0x31, 0xc0,
+        0x0c, 0x09, 0x64, 0x6e, 0x73, 0x2d, 0x61, 0x64, 0x6d, 0x69, 0x6e, 0xc0, 0x0c, 0x19, 0x1b,
+        0xc0, 0x0c, 0x00, 0x00, 0x03, 0x84, 0x00, 0x00, 0x03, 0x84, 0x00, 0x00, 0x07, 0x08, 0x00,
+        0x00, 0x00, 0x3c, 0x00, 0x00, 0x29, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+
+    #[test]
+    fn domain_name() {
+        let mut buffer = Cursor::new(SAMPLE);
+
+        // move forward to find first test: 0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f, 0x6d, 0x00, 0x00, 0x05, 0x00, 0x01, 0xc0, 0x0c, 0x00
+        buffer.seek(SeekFrom::Start(12)).unwrap();
+
+        // read domain name
+        let mut dn = DomainName::default();
+        assert!(dn.from_network_bytes(&mut buffer).is_ok());
+        assert_eq!(dn.0, &["google", "com"]);
+        assert_eq!(&dn.to_string(), "google.com");
+
+        // move forward to find second test: 0xc0, 0x0c
+        buffer.seek(SeekFrom::Start(28)).unwrap();
+
+        // read domain name
+        let mut dn = DomainName::default();
+        assert!(dn.from_network_bytes(&mut buffer).is_ok());
+        assert_eq!(dn.0, &["google", "com"]);
+        assert_eq!(&dn.to_string(), "google.com");
+
+        // move forward to find second test: 0x6e, 0x73, 0x31, 0xc0, 0x0c
+        buffer.seek(SeekFrom::Start(40)).unwrap();
+
+        // read domain name
+        let mut dn = DomainName::default();
+        assert!(dn.from_network_bytes(&mut buffer).is_ok());
+        assert_eq!(dn.0, &["ns1", "google", "com"]);
+        assert_eq!(&dn.to_string(), "ns1.google.com");
+
+        // move forward to find second test: 0x09, 0x64, 0x6e, 0x73, 0x2d, 0x61, 0x64, 0x6d, 0x69, 0x6e, 0xc0, 0x0c
+        buffer.seek(SeekFrom::Start(46)).unwrap();
+
+        // read domain name
+        let mut dn = DomainName::default();
+        assert!(dn.from_network_bytes(&mut buffer).is_ok());
+        assert_eq!(dn.0, &["dns-admin", "google", "com"]);
+        assert_eq!(&dn.to_string(), "dns-admin.google.com");
+    }
+
+    #[test]
+    fn dnspacket_to_network() {
+        // flags
+        let flags = DNSPacketFlags {
+            packet_type: PacketType::Response,
+            op_code: OpCode::IQuery,
+            is_authorative_answer: true,
+            is_truncated: true,
+            is_recursion_desired: true,
+            is_recursion_available: true,
+            z: 0b111,
+            response_code: ResponseCode::NoError,
+        };
+
+        // packet header
+        let header = DNSPacketHeader {
+            id: 0x1234,
+            flags: flags,
+            qd_count: 0x1234,
+            an_count: 0x1234,
+            ns_count: 0x1234,
+            ar_count: 0x1234,
+        };
+
+        // question
+        let mut qn = DomainName::default();
+        qn.from_slice(SAMPLE_SLICE.as_slice()).unwrap();
+        let question = DNSQuestion {
+            name: qn,
+            r#type: QType::A,
+            class: QClass::IN,
+        };
+
+        // packet
+        let packet = DNSPacket::<DNSQuestion> {
+            header: header,
+            data: question,
+        };
+
+        // convert to NB
+        let mut buffer: Vec<u8> = Vec::new();
+
+        let converted = packet.to_network_bytes(&mut buffer);
+        assert!(converted.is_ok());
+        let length = converted.unwrap();
+        assert_eq!(length, 31);
+
+        assert_eq!(
+            buffer,
+            &[
+                0x12,
+                0x34,
+                0b1000_1111,
+                0b1111_0000,
+                0x12,
+                0x34,
+                0x12,
+                0x34,
+                0x12,
+                0x34,
+                0x12,
+                0x34,
+                0x03,
+                0x77,
+                0x77,
+                0x77,
+                0x06,
+                0x67,
+                0x6f,
+                0x6f,
+                0x67,
+                0x6c,
+                0x65,
+                0x02,
+                0x69,
+                0x65,
+                0x00,
+                0x00,
+                0x01,
+                0x00,
+                0x01
+            ]
+        );
     }
 }

@@ -13,4 +13,4 @@ pub trait ToFromNetworkOrder<'a> {
 
 pub mod dns;
 pub mod primitive;
-pub mod resource_record;
+//pub mod resource_record;

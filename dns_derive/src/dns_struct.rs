@@ -2,7 +2,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::visit::{self, Visit};
-use syn::{Data, DataStruct, DeriveInput, Ident, TraitBound, TypeParam, Lifetime};
+use syn::{Data, DataStruct, DeriveInput, Ident, Lifetime, TraitBound, TypeParam};
 
 // structure used with the visit methods: stores generic parameter existence and list of bounds
 #[derive(Default)]
@@ -34,7 +34,7 @@ impl<'ast> Visit<'ast> for ExprVisitor<'ast> {
 
 // helper function to check whether the structure being derived is a generic one
 // and stores bounds if any
-fn get_generic_data(derive_input: &DeriveInput) -> Option<proc_macro2::TokenStream> {
+fn _get_generic_data(derive_input: &DeriveInput) -> Option<proc_macro2::TokenStream> {
     // check whether we have generic type and bounds
     let mut visitor = ExprVisitor::default();
     visitor.visit_derive_input(&derive_input);

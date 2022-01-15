@@ -103,16 +103,16 @@ pub fn dns_enum(ast: &DeriveInput) -> TokenStream {
         }
     });
 
-    let display = variant_data.iter().map(|v| {
-        // create value and identifier
-        let value_variant = &v.0;
-        let value_int = v.1.parse::<u8>().unwrap();
-        let variant = format_ident!("{}", &v.0);
+    // let display = variant_data.iter().map(|v| {
+    //     // create value and identifier
+    //     let value_variant = &v.0;
+    //     let value_int = v.1.parse::<u8>().unwrap();
+    //     let variant = format_ident!("{}", &v.0);
 
-        quote! {
-            #enum_name::#variant => write!(f, "{}({})", #value_variant, #value_int),
-        }
-    });
+    //     quote! {
+    //         #enum_name::#variant => write!(f, "{}({})", #value_variant, #value_int),
+    //     }
+    // });
 
     // now create code for implementation of Default, TryFrom<u8>, FromStr
     let impls = quote! {
@@ -157,13 +157,13 @@ pub fn dns_enum(ast: &DeriveInput) -> TokenStream {
         }
 
         // impl Display
-        impl std::fmt::Display for #enum_name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                match self {
-                    #(#display)*
-                }
-            }
-        }
+        // impl std::fmt::Display for #enum_name {
+        //     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        //         match self {
+        //             #(#display)*
+        //         }
+        //     }
+        // }
     };
 
     // Hand the output tokens back to the compiler
