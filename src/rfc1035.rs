@@ -68,21 +68,21 @@ pub struct DNSPacketFlags {
     // 1               an inverse query (IQUERY)
     // 2               a server status request (STATUS)
     // 3-15            reserved for future use
-    pub is_authorative_answer: bool, // Authoritative Answer - this bit is valid in responses,
+    pub authorative_answer: bool, // Authoritative Answer - this bit is valid in responses,
     //and specifies that the responding name server is an
     //authority for the domain name in question section.
     //Note that the contents of the answer section may have
     //multiple owner names because of aliases.  The AA bit
     //corresponds to the name which matches the query name, or
     //the first owner name in the answer section.
-    pub is_truncated: bool, //    TrunCation - specifies that this message was truncated
+    pub truncated: bool, //    TrunCation - specifies that this message was truncated
     //    due to length greater than that permitted on the
     //    transmission channel.
-    pub is_recursion_desired: bool, // Recursion Desired - this bit may be set in a query and
+    pub recursion_desired: bool, // Recursion Desired - this bit may be set in a query and
     // is copied into the response.  If RD is set, it directs
     // the name server to pursue the query recursively.
     // Recursive query support is optional.
-    pub is_recursion_available: bool, // Recursion Available - this be is set or cleared in a
+    pub recursion_available: bool, // Recursion Available - this be is set or cleared in a
     //  response, and denotes whether recursive query support is
     //  available in the name server.
     pub z: u8, // Reserved for future use.  Must be zero in all queries and responses.
@@ -123,13 +123,13 @@ impl fmt::Display for DNSPacketFlags {
             write!(
                 f,
                 "OPCODE:{:?} RD:{}",
-                self.op_code, self.is_recursion_desired
+                self.op_code, self.recursion_desired
             )
         } else {
             write!(
                 f,
                 "OPCODE:{:?} TC:{} RA:{} RCODE:{:?}",
-                self.op_code, self.is_truncated, self.is_recursion_available, self.response_code
+                self.op_code, self.truncated, self.recursion_available, self.response_code
             )
         }
     }
@@ -571,7 +571,7 @@ pub struct DomainName<'a>(pub Vec<&'a str>);
 impl<'a> DomainName<'a> {
     /// ```
     /// use dnslib::rfc1035::DomainName;
-    /// use dnslib::network_order::{SAMPLE_DOMAIN, SAMPLE_SLICE};
+    /// use dnslib::network_order::dns::{SAMPLE_DOMAIN, SAMPLE_SLICE};
     ///
     /// let mut dn = DomainName::default();
     /// dn.from_slice(SAMPLE_SLICE.as_slice());
@@ -636,7 +636,7 @@ impl<'a> TryFrom<&'a str> for DomainName<'a> {
 
 /// ```
 /// use dnslib::rfc1035::DomainName;
-/// use dnslib::network_order::{SAMPLE_DOMAIN, SAMPLE_SLICE};
+/// use dnslib::network_order::dns::{SAMPLE_DOMAIN, SAMPLE_SLICE};
 ///
 /// let mut dn = DomainName::default();
 /// dn.from_slice(SAMPLE_SLICE.as_slice());
@@ -668,3 +668,6 @@ pub struct HINFO<'a> {
     pub cpu: CharacterString<'a>,
     pub os: CharacterString<'a>,
 }
+
+// CNAME RR
+pub type CNAME<'a> = DomainName<'a>;

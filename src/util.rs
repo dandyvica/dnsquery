@@ -15,17 +15,20 @@ pub fn pretty_cursor<'a>(buffer: &Cursor<&'a [u8]>) {
     eprintln!("position={}", buffer.position());
 
     let mut i = 0usize;
+    eprint!("index:");
     for _ in *reference {
         eprint!("{:02} ", i);
         i += 1;
     }
     eprintln!();
 
+    eprint!("byte :");
     for x in *reference {
         eprint!("{:02X} ", x);
     }
     eprintln!();
 
+    eprint!("ascii:");
     for x in *reference {
         let c = char::from_u32(*x as u32).unwrap();
         if c.is_ascii_alphanumeric() {

@@ -57,7 +57,7 @@ impl<'a> ToFromNetworkOrder<'a> for DomainName<'a> {
     /// ```
     /// use dnslib::rfc1035::DomainName;
     /// use dnslib::network_order::ToFromNetworkOrder;
-    /// use dnslib::network_order::{SAMPLE_DOMAIN, SAMPLE_SLICE};
+    /// use dnslib::network_order::dns::{SAMPLE_DOMAIN, SAMPLE_SLICE};
     ///
     /// let dn = DomainName::try_from(SAMPLE_DOMAIN).unwrap();
     /// let mut buffer: Vec<u8> = Vec::new();
@@ -88,7 +88,7 @@ impl<'a> ToFromNetworkOrder<'a> for DomainName<'a> {
     /// use std::io::Cursor;
     /// use dnslib::network_order::ToFromNetworkOrder;
     /// use dnslib::rfc1035::DomainName;
-    /// use dnslib::network_order::{SAMPLE_DOMAIN, SAMPLE_SLICE};
+    /// use dnslib::network_order::dns::{SAMPLE_DOMAIN, SAMPLE_SLICE};
     ///
     /// // with sentinel = 0
     /// let mut buffer = Cursor::new(SAMPLE_SLICE.as_slice());
@@ -200,10 +200,10 @@ impl<'a> ToFromNetworkOrder<'a> for DNSPacketFlags {
     /// let flags = DNSPacketFlags {
     ///     packet_type: PacketType::Response,
     ///     op_code: OpCode::IQuery,
-    ///     is_authorative_answer: true,
-    ///     is_truncated: true,
-    ///     is_recursion_desired: true,
-    ///     is_recursion_available: true,
+    ///     authorative_answer: true,
+    ///     truncated: true,
+    ///     recursion_desired: true,
+    ///     recursion_available: true,
     ///     z: 0b111,
     ///     response_code: ResponseCode::NoError
     /// };
@@ -223,10 +223,10 @@ impl<'a> ToFromNetworkOrder<'a> for DNSPacketFlags {
         // +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
         let mut flags = (self.packet_type as u16) << 15;
         flags |= (self.op_code as u16) << 11;
-        flags |= (self.is_authorative_answer as u16) << 10;
-        flags |= (self.is_truncated as u16) << 9;
-        flags |= (self.is_recursion_desired as u16) << 8;
-        flags |= (self.is_recursion_available as u16) << 7;
+        flags |= (self.authorative_answer as u16) << 10;
+        flags |= (self.truncated as u16) << 9;
+        flags |= (self.recursion_desired as u16) << 8;
+        flags |= (self.recursion_available as u16) << 7;
         flags |= (self.z as u16) << 4;
         flags |= self.response_code as u16;
 
@@ -246,10 +246,10 @@ impl<'a> ToFromNetworkOrder<'a> for DNSPacketFlags {
     /// println!("{:?}", v);
     /// assert_eq!(v.packet_type, PacketType::Response);
     /// assert_eq!(v.op_code, OpCode::IQuery);
-    /// assert!(v.is_authorative_answer);
-    /// assert!(v.is_truncated);
-    /// assert!(v.is_recursion_desired);
-    /// assert!(v.is_recursion_available);
+    /// assert!(v.authorative_answer);
+    /// assert!(v.truncated);
+    /// assert!(v.recursion_desired);
+    /// assert!(v.recursion_available);
     /// assert_eq!(v.z, 0b111);
     /// assert_eq!(v.response_code, ResponseCode::NoError);
     /// ```
@@ -277,10 +277,10 @@ impl<'a> ToFromNetworkOrder<'a> for DNSPacketFlags {
         self.packet_type = packet_type.try_into()?;
 
         self.op_code = OpCode::try_from(flags >> 11 & 0b1111)?;
-        self.is_authorative_answer = (flags >> 10) & 1 == 1;
-        self.is_truncated = (flags >> 9) & 1 == 1;
-        self.is_recursion_desired = (flags >> 8) & 1 == 1;
-        self.is_recursion_available = (flags >> 7) & 1 == 1;
+        self.authorative_answer = (flags >> 10) & 1 == 1;
+        self.truncated = (flags >> 9) & 1 == 1;
+        self.recursion_desired = (flags >> 8) & 1 == 1;
+        self.recursion_available = (flags >> 7) & 1 == 1;
         self.z = (flags >> 7 & 0b111) as u8;
         self.response_code = ResponseCode::try_from(flags & 0b1111)?;
 
@@ -296,10 +296,10 @@ impl<'a> ToFromNetworkOrder<'a> for DNSPacketFlags {
 //     /// let flags = DNSPacketFlags {
 //     ///     packet_type: PacketType::Response,
 //     ///     op_code: OpCode::IQuery,
-//     ///     is_authorative_answer: true,
-//     ///     is_truncated: true,
-//     ///     is_recursion_desired: true,
-//     ///     is_recursion_available: true,
+//     ///     authorative_answer: true,
+//     ///     truncated: true,
+//     ///     recursion_desired: true,
+//     ///     recursion_available: true,
 //     ///     z: 0b111,
 //     ///     response_code: ResponseCode::NoError
 //     /// };
@@ -500,10 +500,10 @@ mod tests {
         let flags = DNSPacketFlags {
             packet_type: PacketType::Response,
             op_code: OpCode::IQuery,
-            is_authorative_answer: true,
-            is_truncated: true,
-            is_recursion_desired: true,
-            is_recursion_available: true,
+            authorative_answer: true,
+            truncated: true,
+            recursion_desired: true,
+            recursion_available: true,
             z: 0b111,
             response_code: ResponseCode::NoError,
         };

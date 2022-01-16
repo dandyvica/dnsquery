@@ -33,7 +33,7 @@ fn main() -> DNSResult<()> {
     send_query(&socket, &options.host, options.qtype, options.debug)?;
 
     // receive request
-    receive_answer(&socket)?;
+    receive_answer(&socket, options.debug)?;
 
     Ok(())
 }
@@ -41,7 +41,7 @@ fn main() -> DNSResult<()> {
 fn send_query(socket: &UdpSocket, endpoint: &str, qtype: QType, debug:bool) -> DNSResult<()> {
     // build a new DNS packet
     let mut dns_packet = DNSPacket::<DNSQuestion>::default();
-    DNSRequest::init_request(&mut dns_packet, qtype);
+    DNSRequest::init_request(&mut dns_packet, qtype)?;
     if debug {
         eprintln!("{:#?}", dns_packet);
     } 
@@ -54,12 +54,12 @@ fn send_query(socket: &UdpSocket, endpoint: &str, qtype: QType, debug:bool) -> D
 
     // send packet through the wire
     let dest = format!("{}:53", endpoint);
-    socket.send_to(&buffer, "1.1.1.1:53")?;
+    socket.send_to(&buffer, dest)?;
 
     Ok(())
 }
 
-fn receive_answer(socket: &UdpSocket) -> DNSResult<()> {
+fn receive_answer(socket: &UdpSocket, debug:bool) -> DNSResult<()> {
     // receive packet from endpoint
     let mut buf = [0; MAX_DNS_PACKET_SIZE];
     let received = socket.recv(&mut buf)?;
@@ -70,6 +70,12 @@ fn receive_answer(socket: &UdpSocket) -> DNSResult<()> {
     // get the DNS header
     let mut dns_header_response = DNSPacketHeader::default();
     dns_header_response.from_network_bytes(&mut cursor)?;
+
+    if debug {
+        eprintln!("{:#?}", dns_header_response);
+        pretty_cursor(&cursor);
+
+    }     
     println!("{}", dns_header_response);
 
     // if question is still in the response, skip it
@@ -82,8 +88,6 @@ fn receive_answer(socket: &UdpSocket) -> DNSResult<()> {
 
     // display data according to QType
     display_data(&mut cursor)?;
-
-    pretty_cursor(&cursor);
 
     Ok(())
 }
