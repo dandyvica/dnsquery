@@ -3,8 +3,8 @@
 use rand::Rng;
 
 use dnslib::{
-    rfc1035::{DNSPacket, DNSQuestion, DomainName, OpCode, PacketType, QClass, QType},
     error::DNSResult,
+    rfc1035::{DNSPacket, DNSQuestion, DomainName, OpCode, PacketType, QClass, QType},
 };
 
 // placeholder for gathering DNS functions to prepare a request
@@ -20,7 +20,7 @@ impl DNSRequest {
         packet.header.flags.op_code = OpCode::Query;
         packet.header.flags.authorative_answer = false;
         packet.header.flags.truncated = false;
-        packet.header.flags.recursion_desired = false;
+        packet.header.flags.recursion_desired = true;
         packet.header.flags.recursion_available = false;
 
         packet.header.qd_count = 1;
@@ -41,3 +41,5 @@ impl DNSRequest {
         Ok(())
     }
 }
+
+

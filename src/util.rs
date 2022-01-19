@@ -3,9 +3,31 @@
 use std::char;
 use std::io::Cursor;
 
+/// Give the leftmost 2 bits of a 8-bit integer.
+///
+/// # Example
+/// ```
+/// use dnslib::util::leftmost_bits;
+///
+/// assert_eq!(leftmost_bits(0b11000000), 0b11_u8);
+/// ```
+pub fn leftmost_bits(x: u8) -> u8 {
+    x >> 6
+}
+
+/// A domain name is null terminated or terminated by a pointer as explained in the RFC1035.
+///
+/// # Example
+/// ```
+/// use dnslib::util::is_sentinel;
+///
+/// assert!(is_sentinel(0b11000000));
+/// assert!(is_sentinel(0));
+/// assert!(!is_sentinel(0b10000000));
+/// ```
 // A domain name is null terminated or terminated by a pointer as explained in the RFC1035
 pub fn is_sentinel(x: u8) -> bool {
-    x == 0 || x >= 192
+    x == 0 || leftmost_bits(x) == 0b11_u8
 }
 
 // Debug utility

@@ -120,11 +120,7 @@ impl fmt::Display for DNSPacketFlags {
         write!(f, "{:?} ", self.packet_type)?;
 
         if self.packet_type == PacketType::Query {
-            write!(
-                f,
-                "OPCODE:{:?} RD:{}",
-                self.op_code, self.recursion_desired
-            )
+            write!(f, "OPCODE:{:?} RD:{}", self.op_code, self.recursion_desired)
         } else {
             write!(
                 f,
@@ -284,7 +280,7 @@ pub struct DnsResponse<'a> {
     pub name: DomainName<'a>, // an owner name, i.e., the name of the node to which this resource record pertains.
     pub r#type: QType,        // two octets containing one of the RR TYPE codes.
     pub class: QClass,        // two octets containing one of the RR CLASS codes.
-    pub ttl: u32,             //   a bit = 32 signed integer that specifies the time interval
+    pub ttl: u32, //   a bit = 32 signed (actually unsigned) integer that specifies the time interval
     //   that the resource record may be cached before the source
     //   of the information should again be consulted.  Zero
     //   values are interpreted to mean that the RR can only be
@@ -641,11 +637,12 @@ impl<'a> TryFrom<&'a str> for DomainName<'a> {
 /// let mut dn = DomainName::default();
 /// dn.from_slice(SAMPLE_SLICE.as_slice());
 ///
-/// assert_eq!(dn.to_string(), "www.google.ie");
+/// assert_eq!(dn.to_string(), "www.google.ie.");
 /// ```
 impl<'a> fmt::Display for DomainName<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.join("."))
+        write!(f, "{}", self.0.join("."))?;
+        write!(f, ".")
     }
 }
 
@@ -671,3 +668,47 @@ pub struct HINFO<'a> {
 
 // CNAME RR
 pub type CNAME<'a> = DomainName<'a>;
+
+// NS RR
+pub type NS<'a> = DomainName<'a>;
+
+// AAAA RR
+pub type AAAA = [u8; 16];
+
+// SOA RR
+#[derive(Debug, Default, DnsStruct)]
+pub struct SOA<'a> {
+    mname: DomainName<'a>, // The <domain-name> of the name server that was the
+    // original or primary source of data for this zone.
+    rname: DomainName<'a>, // A <domain-name> which specifies the mailbox of the
+    // person responsible for this zone.
+    serial: u32, // The unsigned 32 bit version number of the original copy
+    // of the zone.  Zone transfers preserve this value.  This
+    // value wraps and should be compared using sequence space
+    // arithmetic.
+    refresh: u32, // A 32 bit time interval before the zone should be
+    // refreshed.
+    retry: u32, // A 32 bit time interval that should elapse before a
+    // failed refresh should be retried.
+    expire: u32, // A 32 bit time value that specifies the upper limit on
+    // the time interval that can elapse before the zone is no
+    // longer authoritative.
+    minimum: u32, //The unsigned 32 bit minimum TTL field that should be
+                  //exported with any RR from this zone.
+}
+
+impl<'a> fmt::Display for SOA<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "mname:{} rname:{} serial:{} refresh:{} retry:{} expire:{} minimum:{}",
+            self.mname,
+            self.rname,
+            self.serial,
+            self.refresh,
+            self.retry,
+            self.expire,
+            self.minimum
+        )
+    }
+}

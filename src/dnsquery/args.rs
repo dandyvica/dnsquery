@@ -1,8 +1,8 @@
 //! Manage command line arguments here.
-use std::str::FromStr;
 use clap::{App, Arg};
+use std::str::FromStr;
 
-use dnslib::rfc1035::QType;
+use dnslib::{error::DNSResult, rfc1035::QType};
 
 /// This structure holds the command line arguments.
 #[derive(Debug, Default)]
@@ -13,7 +13,7 @@ pub struct CliOptions {
 }
 
 impl CliOptions {
-    pub fn options() -> Self {
+    pub fn options() -> DNSResult<Self> {
         let matches = App::new("DNS query tool")
             .version("0.1")
             .author("Alain Viguier dandyvica@gmail.com")
@@ -54,9 +54,9 @@ impl CliOptions {
         let mut options = CliOptions::default();
 
         options.host = String::from(matches.value_of("host").unwrap());
-        options.qtype = QType::from_str(matches.value_of("qtype").unwrap()).unwrap();
+        options.qtype = QType::from_str(matches.value_of("qtype").unwrap())?;
         options.debug = matches.is_present("debug");
 
-        options
+        Ok(options)
     }
 }

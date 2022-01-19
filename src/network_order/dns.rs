@@ -316,7 +316,7 @@ impl<'a> ToFromNetworkOrder<'a> for DNSPacketFlags {
 //     /// let mut buffer: Vec<u8> = Vec::new();
 //     /// assert!(packet.to_network_bytes(&mut buffer).is_ok());
 //     /// assert_eq!(buffer, &[0x12, 0x34, 0b1000_1111, 0b1111_0000, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34]);
-//     /// ```    
+//     /// ```
 //     fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
 //         self.id.to_network_bytes(buffer)?;
 //         self.flags.to_network_bytes(buffer)?;
@@ -410,7 +410,7 @@ impl<'a> ToFromNetworkOrder<'a> for DnsResponse<'a> {
 //     /// assert_eq!(&question.name.to_string(), SAMPLE_DOMAIN);
 //     /// assert_eq!(question.r#type, QType::A);
 //     /// assert_eq!(question.class, QClass::IN);
-//     /// ```    
+//     /// ```
 //     fn from_network_bytes(&mut self, buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
 //         self.name.from_network_bytes(buffer)?;
 //         self.r#type.from_network_bytes(buffer)?;
@@ -464,7 +464,7 @@ mod tests {
         let mut dn = DomainName::default();
         assert!(dn.from_network_bytes(&mut buffer).is_ok());
         assert_eq!(dn.0, &["google", "com"]);
-        assert_eq!(&dn.to_string(), "google.com");
+        assert_eq!(&dn.to_string(), "google.com.");
 
         // move forward to find second test: 0xc0, 0x0c
         buffer.seek(SeekFrom::Start(28)).unwrap();
@@ -473,7 +473,7 @@ mod tests {
         let mut dn = DomainName::default();
         assert!(dn.from_network_bytes(&mut buffer).is_ok());
         assert_eq!(dn.0, &["google", "com"]);
-        assert_eq!(&dn.to_string(), "google.com");
+        assert_eq!(&dn.to_string(), "google.com.");
 
         // move forward to find second test: 0x6e, 0x73, 0x31, 0xc0, 0x0c
         buffer.seek(SeekFrom::Start(40)).unwrap();
@@ -482,7 +482,7 @@ mod tests {
         let mut dn = DomainName::default();
         assert!(dn.from_network_bytes(&mut buffer).is_ok());
         assert_eq!(dn.0, &["ns1", "google", "com"]);
-        assert_eq!(&dn.to_string(), "ns1.google.com");
+        assert_eq!(&dn.to_string(), "ns1.google.com.");
 
         // move forward to find second test: 0x09, 0x64, 0x6e, 0x73, 0x2d, 0x61, 0x64, 0x6d, 0x69, 0x6e, 0xc0, 0x0c
         buffer.seek(SeekFrom::Start(46)).unwrap();
@@ -491,7 +491,7 @@ mod tests {
         let mut dn = DomainName::default();
         assert!(dn.from_network_bytes(&mut buffer).is_ok());
         assert_eq!(dn.0, &["dns-admin", "google", "com"]);
-        assert_eq!(&dn.to_string(), "dns-admin.google.com");
+        assert_eq!(&dn.to_string(), "dns-admin.google.com.");
     }
 
     #[test]

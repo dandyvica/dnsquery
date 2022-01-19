@@ -7,7 +7,8 @@ use dnslib::{
     error::DNSResult,
     network_order::ToFromNetworkOrder,
     rfc1035::{
-        DNSPacket, DNSPacketHeader, DNSQuestion, DnsResponse, QType, HINFO, MAX_DNS_PACKET_SIZE,
+        DNSPacket, DNSPacketHeader, DNSQuestion, DnsResponse, QType, ResponseCode, AAAA, HINFO,
+        MAX_DNS_PACKET_SIZE, SOA,
     },
     util::pretty_cursor,
 };
@@ -20,12 +21,12 @@ use args::CliOptions;
 
 fn main() -> DNSResult<()> {
     // manage arguments from command line
-    let options = CliOptions::options();
+    let options = CliOptions::options()?;
 
     if options.debug {
         eprintln!("{:#?}", options);
     }
-    
+
     // bind to an ephermeral local port
     let socket = UdpSocket::bind("0.0.0.0:0")?;
 
@@ -38,13 +39,13 @@ fn main() -> DNSResult<()> {
     Ok(())
 }
 
-fn send_query(socket: &UdpSocket, endpoint: &str, qtype: QType, debug:bool) -> DNSResult<()> {
+fn send_query(socket: &UdpSocket, endpoint: &str, qtype: QType, debug: bool) -> DNSResult<()> {
     // build a new DNS packet
     let mut dns_packet = DNSPacket::<DNSQuestion>::default();
     DNSRequest::init_request(&mut dns_packet, qtype)?;
     if debug {
         eprintln!("{:#?}", dns_packet);
-    } 
+    }
 
     println!("{}", dns_packet.header);
 
@@ -59,10 +60,11 @@ fn send_query(socket: &UdpSocket, endpoint: &str, qtype: QType, debug:bool) -> D
     Ok(())
 }
 
-fn receive_answer(socket: &UdpSocket, debug:bool) -> DNSResult<()> {
+fn receive_answer(socket: &UdpSocket, debug: bool) -> DNSResult<()> {
     // receive packet from endpoint
     let mut buf = [0; MAX_DNS_PACKET_SIZE];
     let received = socket.recv(&mut buf)?;
+    println!("received={}", received);
 
     // cursor is necessary to use the ToFromNetworkOrder trait
     let mut cursor = Cursor::new(&buf[..received]);
@@ -74,9 +76,14 @@ fn receive_answer(socket: &UdpSocket, debug:bool) -> DNSResult<()> {
     if debug {
         eprintln!("{:#?}", dns_header_response);
         pretty_cursor(&cursor);
-
-    }     
+    }
     println!("{}", dns_header_response);
+
+    // check return code
+    if dns_header_response.flags.response_code != ResponseCode::NoError {
+        eprintln!("Response error!");
+        std::process::exit(1);
+    }
 
     // if question is still in the response, skip it
     if dns_header_response.qd_count >= 1 {
@@ -109,6 +116,16 @@ fn display_data<'a>(cursor: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
             let mut hinfo = HINFO::default();
             hinfo.from_network_bytes(cursor)?;
             println!("HINFO: {:?}", hinfo);
+        }
+        QType::AAAA => {
+            let mut aaaa = AAAA::default();
+            aaaa.from_network_bytes(cursor)?;
+            println!("ipv6={}", std::net::Ipv6Addr::from(aaaa));
+        }
+        QType::SOA => {
+            let mut soa = SOA::default();
+            soa.from_network_bytes(cursor)?;
+            println!("{}", soa);
         }
         _ => unimplemented!(),
     }

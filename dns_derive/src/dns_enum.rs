@@ -139,7 +139,7 @@ pub fn dns_enum(ast: &DeriveInput) -> TokenStream {
             fn try_from(value: u16) -> Result<Self, Self::Error> {
                 match value {
                     #(#try_from_u16)*
-                    _ => Err(format!("error converting <{}> to enum type {}", value, #enum_name_s)),
+                    _ => Err(format!("error converting u16 value <{}> to enum type {}", value, #enum_name_s)),
                 }
             }
         }
@@ -151,7 +151,7 @@ pub fn dns_enum(ast: &DeriveInput) -> TokenStream {
             fn from_str(s: &str) -> Result<Self, Self::Err> {
                 match s {
                     #(#from_str)*
-                    _ => Err(format!("error converting string <{}> to enum type {}", s, #enum_name_s)),
+                    _ => Err(format!("error converting string '{}' to enum type {}", s, #enum_name_s)),
                 }
             }
         }
