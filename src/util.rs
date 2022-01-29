@@ -26,6 +26,21 @@ pub fn leftmost_bits(x: u8) -> u8 {
 /// assert!(!is_sentinel(0b10000000));
 /// ```
 // A domain name is null terminated or terminated by a pointer as explained in the RFC1035
+pub fn is_pointer(x: u8) -> bool {
+    leftmost_bits(x) == 0b11_u8
+}
+
+/// A domain name is null terminated or terminated by a pointer as explained in the RFC1035.
+///
+/// # Example
+/// ```
+/// use dnslib::util::is_sentinel;
+///
+/// assert!(is_sentinel(0b11000000));
+/// assert!(is_sentinel(0));
+/// assert!(!is_sentinel(0b10000000));
+/// ```
+// A domain name is null terminated or terminated by a pointer as explained in the RFC1035
 pub fn is_sentinel(x: u8) -> bool {
     x == 0 || leftmost_bits(x) == 0b11_u8
 }

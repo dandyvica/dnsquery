@@ -4,6 +4,7 @@ use rand::Rng;
 
 use dnslib::{
     error::DNSResult,
+    query::DnsQuery,
     rfc1035::{DNSPacket, DNSQuestion, DomainName, OpCode, PacketType, QClass, QType},
 };
 
@@ -11,7 +12,11 @@ use dnslib::{
 pub struct DNSRequest;
 
 impl DNSRequest {
-    pub fn init_request(packet: &mut DNSPacket<DNSQuestion>, qtype: QType) -> DNSResult<()> {
+    pub fn init_request<'a>(
+        domain: &'a str,
+        packet: &mut DNSPacket<DNSQuestion<'a>>,
+        qtype: QType,
+    ) -> DNSResult<()> {
         // create a random ID
         let mut rng = rand::thread_rng();
         packet.header.id = rng.gen::<u16>();
@@ -29,7 +34,7 @@ impl DNSRequest {
         packet.header.ar_count = 0;
 
         // create question
-        let dn = DomainName::try_from("www.google.com")?;
+        let dn = DomainName::try_from(domain)?;
         let question = DNSQuestion {
             name: dn,
             r#type: qtype,
@@ -40,6 +45,15 @@ impl DNSRequest {
 
         Ok(())
     }
+
+    // pub fn init_question<'a>(domain: &'a str, qtype: QType) -> DNSResult<DNSQuestion> {
+    //     let dn = DomainName::try_from(domain)?;
+    //     let question = DNSQuestion {
+    //         name: dn,
+    //         r#type: qtype,
+    //         class: QClass::IN,
+    //     };
+
+    //     Ok(question)
+    // }
 }
-
-

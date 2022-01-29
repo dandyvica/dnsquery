@@ -7,6 +7,13 @@ pub enum DNSError {
     Io(io::Error),
     Utf8(str::Utf8Error),
     DNS(String),
+    DNSInternalError(InternalError),
+}
+
+#[derive(Debug)]
+pub enum InternalError {
+    DnsDomainNameTooLong,
+    EmptyDomainName,
 }
 
 impl DNSError {

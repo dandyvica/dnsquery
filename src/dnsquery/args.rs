@@ -8,7 +8,8 @@ use dnslib::{error::DNSResult, rfc1035::QType};
 #[derive(Debug, Default)]
 pub struct CliOptions {
     pub qtype: QType,
-    pub host: String,
+    pub ns: String,
+    pub domain: String,
     pub debug: bool,
 }
 
@@ -33,16 +34,24 @@ impl CliOptions {
                     .takes_value(true),
             )
             .arg(
-                Arg::new("host")
-                    .short('h')
-                    .long("host")
+                Arg::new("ns")
+                    .short('n')
+                    .long("ns")
                     .required(true)
-                    .long_help("DNS host to query")
+                    .long_help("DNS server to address")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::new("domain")
+                    .short('d')
+                    .long("domain")
+                    .required(true)
+                    .long_help("Domain to query")
                     .takes_value(true),
             )
             .arg(
                 Arg::new("debug")
-                    .short('d')
+                    .short('g')
                     .long("debug")
                     .required(false)
                     .long_help("Debug mode")
@@ -53,8 +62,9 @@ impl CliOptions {
         // save all cli options into a structure
         let mut options = CliOptions::default();
 
-        options.host = String::from(matches.value_of("host").unwrap());
-        options.qtype = QType::from_str(matches.value_of("qtype").unwrap())?;
+        options.ns = String::from(matches.value_of("ns").unwrap());
+        options.domain = String::from(matches.value_of("domain").unwrap());
+        options.qtype = QType::from_str(&matches.value_of("qtype").unwrap().to_uppercase())?;
         options.debug = matches.is_present("debug");
 
         Ok(options)

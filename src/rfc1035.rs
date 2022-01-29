@@ -5,9 +5,9 @@
 use std::fmt;
 use std::str;
 
-use crate::error::DNSResult;
+use crate::error::{DNSError, DNSResult, InternalError};
 use crate::network_order::ToFromNetworkOrder;
-use crate::util::is_sentinel;
+use crate::util::is_pointer;
 
 use dns_derive::{DnsEnum, DnsStruct};
 
@@ -36,25 +36,6 @@ pub struct DNSPacketHeader {
     // server resource records in the authority records section.
     pub ar_count: u16, // an unsigned 16 bit integer specifying the number of
                        // resource records in the additional records section.
-}
-
-impl fmt::Display for DNSPacketHeader {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // output depends on whether it's a query or a response
-        // because some fields are unnecessary when Query or Response
-        write!(f, "ID:{:X} ", self.id)?;
-        write!(f, "FLAGS:{} ", self.flags)?;
-
-        if self.flags.packet_type == PacketType::Query {
-            write!(f, "QDCOUNT:{}", self.qd_count)
-        } else {
-            write!(
-                f,
-                "QDCOUNT:{}, ANCOUNT:{} NSCOUNT:{} ARCOUNT:{}",
-                self.qd_count, self.an_count, self.ns_count, self.ar_count
-            )
-        }
-    }
 }
 
 // Flags: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.1
@@ -113,24 +94,6 @@ pub struct DNSPacketFlags {
                //6-15            Reserved for future use.
 }
 
-impl fmt::Display for DNSPacketFlags {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // output depends on whether it's a query or a response
-        // because some fields are unnecessary when Query or Response
-        write!(f, "{:?} ", self.packet_type)?;
-
-        if self.packet_type == PacketType::Query {
-            write!(f, "OPCODE:{:?} RD:{}", self.op_code, self.recursion_desired)
-        } else {
-            write!(
-                f,
-                "OPCODE:{:?} TC:{} RA:{} RCODE:{:?}",
-                self.op_code, self.truncated, self.recursion_available, self.response_code
-            )
-        }
-    }
-}
-
 /// The flags' first bit is 0 or 1 meaning a question or a response. Better is to use an enum which is
 /// both clearer and type oriented.
 #[derive(Debug, Clone, Copy, PartialEq, DnsEnum)]
@@ -139,24 +102,6 @@ pub enum PacketType {
     Query = 0,
     Response = 1,
 }
-
-// impl Default for PacketType {
-//     fn default() -> Self {
-//         PacketType::Query
-//     }
-// }
-
-// impl TryFrom<u16> for PacketType {
-//     type Error = String;
-
-//     fn try_from(value: u16) -> Result<Self, Self::Error> {
-//         match value {
-//             0 => Ok(PacketType::Query),    //[RFC1035]
-//             1 => Ok(PacketType::Response), // (Inverse Query, OBSOLETE)	[RFC3425]
-//             _ => Err(format!("Invalid PacketType value: {}!", value)),
-//         }
-//     }
-// }
 
 impl fmt::Display for PacketType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -182,29 +127,6 @@ pub enum OpCode {
     DOS = 6,    // DNS Stateful Operations (DSO)	[RFC8490]
                 // 7-15 Unassigned
 }
-
-// impl Default for OpCode {
-//     fn default() -> Self {
-//         OpCode::Query
-//     }
-// }
-
-// impl TryFrom<u16> for OpCode {
-//     type Error = String;
-
-//     fn try_from(value: u16) -> Result<Self, Self::Error> {
-//         match value {
-//             0 => Ok(OpCode::Query),  //[RFC1035]
-//             1 => Ok(OpCode::IQuery), // (Inverse Query, OBSOLETE)	[RFC3425]
-//             2 => Ok(OpCode::Status), // [RFC1035]
-//             3 => Ok(OpCode::Unassigned),
-//             4 => Ok(OpCode::Notify), // [RFC1996]
-//             5 => Ok(OpCode::Update), // [RFC2136]
-//             6 => Ok(OpCode::DOS),    // DNS Stateful Operations (DSO)	[RFC8490]
-//             _ => Err(format!("Invalid OpCode value: {}!", value)),
-//         }
-//     }
-// }
 
 // response codes: https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-6
 #[derive(Debug, Clone, Copy, PartialEq, DnsEnum)]
@@ -234,45 +156,6 @@ pub enum ResponseCode {
     BADTRUNC = 22,  // 	Bad Truncation	[RFC8945]
     BADCOOKIE = 23, //	Bad/missing Server Cookie	[RFC7873]
 }
-
-// impl Default for ResponseCode {
-//     fn default() -> Self {
-//         ResponseCode::NoError
-//     }
-// }
-
-// impl TryFrom<u16> for ResponseCode {
-//     type Error = String;
-
-//     fn try_from(value: u16) -> Result<Self, Self::Error> {
-//         match value {
-//             0 => Ok(ResponseCode::NoError),  // No Error	[RFC1035]
-//             1 => Ok(ResponseCode::FormErr),  // Format Error	[RFC1035]
-//             2 => Ok(ResponseCode::ServFail), // Server Failure	[RFC1035]
-//             3 => Ok(ResponseCode::NXDomain), // Non-Existent Domain	[RFC1035]
-//             4 => Ok(ResponseCode::NotImp),   // Not Implemented	[RFC1035]
-//             5 => Ok(ResponseCode::Refused),  // Query Refused	[RFC1035]
-//             6 => Ok(ResponseCode::YXDomain), // Name Exists when it should not	[RFC2136][RFC6672]
-//             7 => Ok(ResponseCode::YXRRSet),  // RR Set Exists when it should not	[RFC2136]
-//             8 => Ok(ResponseCode::NXRRSet),  // RR Set that should exist does not	[RFC2136]
-//             //9 => Ok(ResponseCode::NotAuth), // Server Not Authoritative for zone	[RFC2136]
-//             9 => Ok(ResponseCode::NotAuth), // Not Authorized	[RFC8945]
-//             10 => Ok(ResponseCode::NotZone), // Name not contained in zone	[RFC2136]
-//             11 => Ok(ResponseCode::DSOTYPENI), // DSO-TYPE Not Implemented	[RFC8490]
-//             // 12-15 => Ok(ResponseCode::Unassigned),
-//             16 => Ok(ResponseCode::BADVERS), // Bad OPT Version	[RFC6891]
-//             //16 => Ok(ResponseCode::BADSIG), // TSIG Signature Failure	[RFC8945]
-//             17 => Ok(ResponseCode::BADKEY), // Key not recognized	[RFC8945]
-//             18 => Ok(ResponseCode::BADTIME), // Signature out of time window	[RFC8945]
-//             19 => Ok(ResponseCode::BADMODE), // Bad TKEY Mode	[RFC2930]
-//             20 => Ok(ResponseCode::BADNAME), // Duplicate key name	[RFC2930]
-//             21 => Ok(ResponseCode::BADALG), // Algorithm not supported	[RFC2930]
-//             22 => Ok(ResponseCode::BADTRUNC), // 	Bad Truncation	[RFC8945]
-//             23 => Ok(ResponseCode::BADCOOKIE), //	Bad/missing Server Cookie	[RFC7873]
-//             _ => Err(format!("Invalid ResponseCode value: {}!", value)),
-//         }
-//     }
-// }
 
 // RR format
 #[derive(Debug, Default)]
@@ -394,9 +277,9 @@ pub enum QType {
     AXFR = 252,     // transfer of an entire zone	[RFC1035][RFC5936]
     MAILB = 253,    // mailbox-related RRs (MB, MG or MR)	[RFC1035]
     MAILA = 254,    // mail agent RRs (OBSOLETE - see MX)	[RFC1035]
-    STAR = 255, // A request for some or all records the server has available	[RFC1035][RFC6895][RFC8482]
-    URI = 256,  // URI	[RFC7553]	URI/uri-completed-template	2011-02-22
-    CAA = 257,  // Certification Authority Restriction	[RFC8659]	CAA/caa-completed-template	2011-04-07
+    ANY = 255, // A request for some or all records the server has available	[RFC1035][RFC6895][RFC8482]
+    URI = 256, // URI	[RFC7553]	URI/uri-completed-template	2011-02-22
+    CAA = 257, // Certification Authority Restriction	[RFC8659]	CAA/caa-completed-template	2011-04-07
     AVC = 258, // Application Visibility and Control	[Wolfgang_Riedel]	AVC/avc-completed-template	2016-02-26
     DOA = 259, // Digital Object Architecture	[draft-durand-doa-over-dns]	DOA/doa-completed-template	2017-08-30
     AMTRELAY = 260, // Automatic Multicast Tunneling Relay	[RFC8777]	AMTRELAY/amtrelay-completed-template	2019-02-06
@@ -532,54 +415,44 @@ pub enum QClass {
     ANY = 255,
 }
 
-// impl Default for QClass {
-//     fn default() -> Self {
-//         QClass::IN
-//     }
-// }
-
-// /// ```
-// /// use dnslib::rfc1035::QClass;
-// ///
-// /// let qc = QClass::try_from(1u16).unwrap();
-// /// assert_eq!(qc, QClass::IN);
-// /// assert!(QClass::try_from(0xFFFF).is_err());
-// /// ```
-// impl TryFrom<u16> for QClass {
-//     type Error = String;
-
-//     fn try_from(value: u16) -> Result<Self, Self::Error> {
-//         match value {
-//             1 => Ok(QClass::IN), // the Internet
-//             2 => Ok(QClass::CS), // the CSNET class (Obsolete - used only for examples in some obsolete RFCs)
-//             3 => Ok(QClass::CH), // the CHAOS class
-//             4 => Ok(QClass::HS), // Hesiod [Dyer 87]
-//             255 => Ok(QClass::ANY),
-//             _ => Err(format!("Invalid QClass value: {}!", value)),
-//         }
-//     }
-// }
-
 // Domain name: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.4
 #[derive(Debug, Default)]
-pub struct DomainName<'a>(pub Vec<&'a str>);
+pub struct DomainName<'a> {
+    pub labels: Vec<(u8, DomainType<'a>)>,
+    pub length: usize,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum DomainType<'a> {
+    Label(&'a [u8]),
+    Null,
+    Pointer(u8),
+}
 
 impl<'a> DomainName<'a> {
     /// ```
-    /// use dnslib::rfc1035::DomainName;
+    /// use dnslib::rfc1035::{DomainName, DomainType};
     /// use dnslib::network_order::dns::{SAMPLE_DOMAIN, SAMPLE_SLICE};
     ///
     /// let mut dn = DomainName::default();
-    /// dn.from_slice(SAMPLE_SLICE.as_slice());
+    /// dn.push_slice(SAMPLE_SLICE.as_slice());
     ///
-    /// assert_eq!(dn.0.len(), 3);
-    /// assert_eq!(dn.0.get(0).unwrap(), &"www");
-    /// assert_eq!(dn.0.get(1).unwrap(), &"google");
-    /// assert_eq!(dn.0.get(2).unwrap(), &"ie");
+    /// assert_eq!(dn.labels.len(), 4);
+    /// assert_eq!(dn.labels.get(0).unwrap(), &(3_u8, DomainType::Label("www".as_bytes())));
+    /// assert_eq!(dn.labels.get(1).unwrap(), &(6_u8, DomainType::Label("google".as_bytes())));
+    /// assert_eq!(dn.labels.get(2).unwrap(), &(2_u8, DomainType::Label("ie".as_bytes())));
+    /// assert_eq!(dn.labels.get(3).unwrap(), &(0_u8, DomainType::Null));
+    /// assert_eq!(dn.length, 11);
     /// ```    
-    pub fn from_slice(&mut self, value: &'a [u8]) -> DNSResult<()> {
+    pub fn push_slice(&mut self, value: &'a [u8]) -> DNSResult<()> {
         //dbg!(value[0]);
         //println!("slice====> {:X?}", value);
+
+        // if we already have a sentinel, delete it because it'll be added
+        // with new slice
+        if !self.labels.is_empty() {
+            self.labels.truncate(self.labels.len());
+        }
 
         // loop through the vector
         let mut index = 0usize;
@@ -587,16 +460,24 @@ impl<'a> DomainName<'a> {
         loop {
             let size = value[index];
 
-            // if we've reached the sentinel, exit
-            if is_sentinel(size) {
+            // if we've reached a sentinel, exit
+            if size == 0 {
+                self.labels.push((0, DomainType::Null));
                 break;
+            } else if is_pointer(size) {
+                self.labels.push((size, DomainType::Pointer(size)));
+                break;
+            // otherwise copy references to inner data
+            } else {
+                self.labels.push((
+                    size,
+                    DomainType::Label(&value[index + 1..index + 1 + size as usize]),
+                ));
+                self.length += size as usize;
+
+                // adjust index
+                index += size as usize + 1;
             }
-
-            self.0
-                .push(str::from_utf8(&value[index + 1..index + 1 + size as usize]).unwrap());
-
-            // adjust length
-            index += size as usize + 1;
         }
 
         Ok(())
@@ -604,29 +485,86 @@ impl<'a> DomainName<'a> {
 }
 
 /// ```
-/// use dnslib::rfc1035::DomainName;
+/// use dnslib::rfc1035::{DomainName, DomainType};
 ///
 /// let dn = DomainName::try_from("www.example.com").unwrap();
-/// assert_eq!(dn.0.len(), 3);
-/// assert_eq!(dn.0.get(0).unwrap(), &"www");
-/// assert_eq!(dn.0.get(1).unwrap(), &"example");
-/// assert_eq!(dn.0.get(2).unwrap(), &"com");
+/// assert_eq!(dn.labels.len(), 4);
+/// assert_eq!(dn.labels.get(0).unwrap(), &(3_u8, DomainType::Label("www".as_bytes())));
+/// assert_eq!(dn.labels.get(1).unwrap(), &(7_u8, DomainType::Label("example".as_bytes())));
+/// assert_eq!(dn.labels.get(2).unwrap(), &(3_u8, DomainType::Label("com".as_bytes())));
+/// assert_eq!(dn.labels.get(3).unwrap(), &(0_u8, DomainType::Null));
+/// assert_eq!(dn.length, 13);
+///
+/// let dn = DomainName::try_from("com.").unwrap();
+/// assert_eq!(dn.labels.len(), 2);
+/// assert_eq!(dn.labels.get(0).unwrap(), &(3_u8, DomainType::Label("com".as_bytes())));
+/// assert_eq!(dn.labels.get(1).unwrap(), &(0_u8, DomainType::Null));
+/// assert_eq!(dn.length, 3);
+///
+/// let dn = DomainName::try_from(".").unwrap();
+/// assert_eq!(dn.labels.len(), 1);
+/// assert_eq!(dn.labels.get(0).unwrap().1, DomainType::Null);
+/// assert_eq!(dn.length, 0);
+///
+/// assert!(DomainName::try_from("").is_err());
 /// ```
 impl<'a> TryFrom<&'a str> for DomainName<'a> {
-    type Error = String;
+    type Error = DNSError;
 
-    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
-        // split input into individual labels
-        let label_list: Vec<&'a str> = value.split('.').collect();
-
-        // check whether label's length is <= 63
-        for label in &label_list {
-            if label.as_bytes().len() > 63 {
-                return Err(format!("label <{}> length is over 63 characters", label));
-            }
+    fn try_from(domain: &'a str) -> Result<Self, Self::Error> {
+        // safeguard
+        if domain.is_empty() {
+            return Err(DNSError::DNSInternalError(InternalError::EmptyDomainName));
         }
 
-        Ok(DomainName(label_list))
+        // handle case for root domain
+        let label_list: Vec<_> = if domain == "." {
+            vec![(0, DomainType::Null)]
+        } else {
+            // split input into individual labels
+            let mut labels: Vec<_> = domain.split('.').collect();
+
+            // for: "www.example.com" => ["www", "example", "com"]
+            // for: "www.example.com." => ["www", "example", "com", ""]
+            // for: "com" => ["com"]
+            // to handle these cases, need to check the if the last element is not ""
+            if labels.is_empty() {
+                return Err(DNSError::DNSInternalError(InternalError::EmptyDomainName));
+            }
+
+            if !labels.last().unwrap().is_empty() {
+                labels.push("");
+            }
+
+            labels
+                .iter()
+                .map(|x| {
+                    if x.is_empty() {
+                        (0, DomainType::Null)
+                    } else {
+                        (x.len() as u8, DomainType::Label(x.as_bytes()))
+                    }
+                })
+                .collect()
+        };
+
+        // calculate domain name length
+        let length = label_list.iter().map(|x| x.0 as usize).sum();
+
+        // check length
+        debug_assert!(length <= 255);
+
+        // check whether label's length is <= 63
+        // for label in &label_list {
+        //     if label.as_bytes().len() > 63 {
+        //         return Err(format!("label <{}> length is over 63 characters", label));
+        //     }
+        // }
+
+        Ok(DomainName {
+            labels: label_list,
+            length: length,
+        })
     }
 }
 
@@ -635,20 +573,31 @@ impl<'a> TryFrom<&'a str> for DomainName<'a> {
 /// use dnslib::network_order::dns::{SAMPLE_DOMAIN, SAMPLE_SLICE};
 ///
 /// let mut dn = DomainName::default();
-/// dn.from_slice(SAMPLE_SLICE.as_slice());
+/// dn.push_slice(SAMPLE_SLICE.as_slice());
 ///
 /// assert_eq!(dn.to_string(), "www.google.ie.");
 /// ```
 impl<'a> fmt::Display for DomainName<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.join("."))?;
-        write!(f, ".")
+        let mut s = String::new();
+
+        self.labels.iter().for_each(|label| {
+            if let DomainType::Label(l) = label.1 {
+                s.push_str(str::from_utf8(l).unwrap());
+                s.push_str(".");
+            }
+        });
+
+        write!(f, "{}", s)
     }
 }
 
+// Character string as described in: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.4
 pub type CharacterString<'a> = &'a str;
 
-// Question structure
+//--------------------------------------------------------------------------------
+// Question structure: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.2
+//--------------------------------------------------------------------------------
 #[derive(Debug, Default, DnsStruct)]
 pub struct DNSQuestion<'a> {
     pub name: DomainName<'a>,
@@ -656,10 +605,29 @@ pub struct DNSQuestion<'a> {
     pub class: QClass,
 }
 
-// A RR
-pub type IPAddressV4 = u32;
+impl<'a> DNSQuestion<'a> {
+    /// Create a new question. By default, the IN class is used if None is provided
+    /// as the qclass parameter
+    pub fn new(domain: &'a str, qtype: QType, qclass: Option<QClass>) -> DNSResult<Self> {
+        let dn = DomainName::try_from(domain)?;
+        let question = DNSQuestion {
+            name: dn,
+            r#type: qtype,
+            class: qclass.unwrap_or(QClass::IN),
+        };
 
-// CNAME RR
+        Ok(question)
+    }
+}
+
+//------------------------------------------------------------------------
+// Definition of all RRs from all different RFCs starting with RFC1035
+//------------------------------------------------------------------------
+
+// A RR
+pub type A = u32;
+
+// HINFO RR
 #[derive(Debug, Default, DnsStruct)]
 pub struct HINFO<'a> {
     pub cpu: CharacterString<'a>,
@@ -678,37 +646,117 @@ pub type AAAA = [u8; 16];
 // SOA RR
 #[derive(Debug, Default, DnsStruct)]
 pub struct SOA<'a> {
-    mname: DomainName<'a>, // The <domain-name> of the name server that was the
+    pub mname: DomainName<'a>, // The <domain-name> of the name server that was the
     // original or primary source of data for this zone.
-    rname: DomainName<'a>, // A <domain-name> which specifies the mailbox of the
+    pub rname: DomainName<'a>, // A <domain-name> which specifies the mailbox of the
     // person responsible for this zone.
-    serial: u32, // The unsigned 32 bit version number of the original copy
+    pub serial: u32, // The unsigned 32 bit version number of the original copy
     // of the zone.  Zone transfers preserve this value.  This
     // value wraps and should be compared using sequence space
     // arithmetic.
-    refresh: u32, // A 32 bit time interval before the zone should be
+    pub refresh: u32, // A 32 bit time interval before the zone should be
     // refreshed.
-    retry: u32, // A 32 bit time interval that should elapse before a
+    pub retry: u32, // A 32 bit time interval that should elapse before a
     // failed refresh should be retried.
-    expire: u32, // A 32 bit time value that specifies the upper limit on
+    pub expire: u32, // A 32 bit time value that specifies the upper limit on
     // the time interval that can elapse before the zone is no
     // longer authoritative.
-    minimum: u32, //The unsigned 32 bit minimum TTL field that should be
-                  //exported with any RR from this zone.
+    pub minimum: u32, //The unsigned 32 bit minimum TTL field that should be
+                      //exported with any RR from this zone.
 }
 
-impl<'a> fmt::Display for SOA<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "mname:{} rname:{} serial:{} refresh:{} retry:{} expire:{} minimum:{}",
-            self.mname,
-            self.rname,
-            self.serial,
-            self.refresh,
-            self.retry,
-            self.expire,
-            self.minimum
-        )
+// PTR RR
+pub type PTR<'a> = DomainName<'a>;
+
+// MX RR
+#[derive(Debug, Default, DnsStruct)]
+pub struct MX<'a> {
+    pub preference: u16, // A 16 bit integer which specifies the preference given to
+    // this RR among others at the same owner.  Lower values
+    // are preferred.
+    pub exchange: DomainName<'a>, // A <domain-name> which specifies a host willing to act as a mail exchange for the owner name.
+}
+
+// TXT RR
+pub type TXT<'a> = CharacterString<'a>;
+
+// RDATA RR
+pub type RDATA = u32;
+
+// OPT RR: https://datatracker.ietf.org/doc/html/rfc6891#section-6.1.2
+// RR format
+#[derive(Debug, DnsStruct)]
+pub struct OPT {
+    pub name: u8,              // MUST be 0 (root domain)
+    pub r#type: QType,         // OPT (41)
+    pub udp_payload_size: u16, // requestor's UDP payload size
+    pub ttl: OptTTL,           // extended RCODE and flags
+    pub rd_length: u16,        // length of all RDATA
+                               //pub r_data: T              // {attribute,value} pairs
+}
+
+impl Default for OPT {
+    fn default() -> Self {
+        Self {
+            name: 0,
+            r#type: QType::OPT,
+            udp_payload_size: 4096,
+            ttl: OptTTL::default(),
+            rd_length: 0,
+        }
     }
+}
+
+//             +0 (MSB)                            +1 (LSB)
+//    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+// 0: |         EXTENDED-RCODE        |            VERSION            |
+//    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+// 2: | DO|                           Z                               |
+//    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+#[derive(Debug, Default, DnsStruct)]
+pub struct OptTTL {
+    extented_rcode: u8, // Forms the upper 8 bits of extended 12-bit RCODE (together with the
+    // 4 bits defined in [RFC1035].  Note that EXTENDED-RCODE value 0
+    // indicates that an unextended RCODE is in use (values 0 through
+    // 15).
+    version: u8, // Indicates the implementation level of the setter.  Full
+    // conformance with this specification is indicated by version '0'.
+    // Requestors are encouraged to set this to the lowest implemented
+    // level capable of expressing a transaction, to minimise the
+    // responder and network load of discovering the greatest common
+    // implementation level between requestor and responder.  A
+    // requestor's version numbering strategy MAY ideally be a run-time
+    // configuration option.
+    // If a responder does not implement the VERSION level of the
+    // request, then it MUST respond with RCODE=BADVERS.  All responses
+    // MUST be limited in format to the VERSION level of the request, but
+    // the VERSION of each response SHOULD be the highest implementation
+    // level of the responder.  In this way, a requestor will learn the
+    // implementation level of a responder as a side effect of every
+    // response, including error responses and including RCODE=BADVERS.
+    z: u16, // zi is D0+Z actually
+}
+
+impl OptTTL {
+    pub fn set_d0(&mut self) {
+        self.z = self.z | 0b1000_0000_0000_0000;
+    }
+}
+
+//             +0 (MSB)                            +1 (LSB)
+//    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+// 0: |                          OPTION-CODE                          |
+//    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+// 2: |                         OPTION-LENGTH                         |
+//    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+// 4: |                                                               |
+//    /                          OPTION-DATA                          /
+//    /                                                               /
+//    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+
+pub struct OptData<T> {
+    option_code: u16, // Assigned by the Expert Review process as defined by the DNSEXT
+    // working group and the IESG.
+    option_length: u16, // Size (in octets) of OPTION-DATA.
+    option_data: T,     // Varies per OPTION-CODE.  MUST be treated as a bit field
 }

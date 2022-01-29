@@ -10,10 +10,18 @@ dns_derive = { path = "dns_derive" }
 byteorder = "1.4.3"
 rand = "0.8.4"
 clap = "3.0.7"
+tokio = { version = "1.16.1", features = ["full"] }
+
+# [build-dependencies]
+# tokio = "1.16.1"
 
 [lib]
 name = "dnslib"
 path = "src/lib.rs"
+
+# [[bin]]
+# name = "dnswall"
+# path = "src/dnswall/dnswall.rs"
 
 [[bin]]
 name = "dnsquery"
