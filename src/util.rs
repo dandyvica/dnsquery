@@ -3,46 +3,41 @@
 use std::char;
 use std::io::Cursor;
 
-/// Give the leftmost 2 bits of a 8-bit integer.
-///
-/// # Example
-/// ```
-/// use dnslib::util::leftmost_bits;
-///
-/// assert_eq!(leftmost_bits(0b11000000), 0b11_u8);
-/// ```
-pub fn leftmost_bits(x: u8) -> u8 {
-    x >> 6
-}
-
 /// A domain name is null terminated or terminated by a pointer as explained in the RFC1035.
 ///
 /// # Example
 /// ```
-/// use dnslib::util::is_sentinel;
+/// use dnslib::util::is_pointer;
 ///
-/// assert!(is_sentinel(0b11000000));
-/// assert!(is_sentinel(0));
-/// assert!(!is_sentinel(0b10000000));
+/// assert!(is_pointer(0b11000000));
+/// assert!(!is_pointer(0));
+/// assert!(!is_pointer(0b10000000));
 /// ```
 // A domain name is null terminated or terminated by a pointer as explained in the RFC1035
 pub fn is_pointer(x: u8) -> bool {
-    leftmost_bits(x) == 0b11_u8
+    x >= 192
 }
 
-/// A domain name is null terminated or terminated by a pointer as explained in the RFC1035.
+/// Convert a domain into bytes
 ///
 /// # Example
 /// ```
-/// use dnslib::util::is_sentinel;
+/// use dnslib::util::to_domain;
 ///
-/// assert!(is_sentinel(0b11000000));
-/// assert!(is_sentinel(0));
-/// assert!(!is_sentinel(0b10000000));
+/// assert_eq!(to_domain("www.google.ie"), &[0x03, 0x77, 0x77, 0x77, 0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x02, 0x69, 0x65, 0x00]);
 /// ```
 // A domain name is null terminated or terminated by a pointer as explained in the RFC1035
-pub fn is_sentinel(x: u8) -> bool {
-    x == 0 || leftmost_bits(x) == 0b11_u8
+pub fn to_domain(domain: &str) -> Vec<u8> {
+    let mut v = Vec::new();
+
+    for label in domain.split('.') {
+        let size = label.len() as u8;
+        v.push(size);
+        v.extend(label.bytes());
+    }
+    v.push(0);
+
+    v
 }
 
 // Debug utility
@@ -75,4 +70,24 @@ pub fn pretty_cursor<'a>(buffer: &Cursor<&'a [u8]>) {
         }
     }
     eprintln!();
+}
+
+// Utility to transfrom data coming from a copy from Wireshark into a slice of u8
+// Ex:
+// 0000   08 d4 81 a0 00 01 00 08 00 00 00 01 02 68 6b 00
+// 0010   00 02 00 01 c0 0c 00 02 00 01 00 00 54 60 00 0e
+// 0020   01 63 05 68 6b 69 72 63 03 6e 65 74 c0 0c c0 0c
+// 0030   00 02 00 01 00 00 54 60 00 04 01 74 c0 22 c0 0c
+// 0040   00 02 00 01 00 00 54 60 00 04 01 76 c0 22 c0 0c
+// 0050   00 02 00 01 00 00 54 60 00 04 01 7a c0 22 c0 0c
+// 0060   00 02 00 01 00 00 54 60 00 04 01 64 c0 22 c0 0c
+// 0070   00 02 00 01 00 00 54 60 00 04 01 75 c0 22 c0 0c
+// 0080   00 02 00 01 00 00 54 60 00 04 01 79 c0 22 c0 0c
+// 0090   00 02 00 01 00 00 54 60 00 04 01 78 c0 22 00 00
+// 00a0   29 02 00 00 00 00 00 00 00
+pub fn get_sample_slice(s: &str) -> Vec<u8> {
+    s.split_ascii_whitespace()
+        .filter(|x| x.len() == 2)
+        .map(|x| u8::from_str_radix(x, 16).unwrap())
+        .collect()
 }

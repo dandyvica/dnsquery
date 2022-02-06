@@ -2,7 +2,13 @@
 //!
 //! The DnsStruct procedural macro automatically defines the implementation of the ToFromNetworkOrder trait.
 //! The DnsEnum procedural macro automatically implements Default, FromStr, TryFrom<u8> and TryFrom<u16>
+//!
+//! FIXME:  clean-up errors
+//!         check DnsEnum macro
+//! TODO:   start integration tests
+//!         move DnsResponse to response.rs
 use std::fmt;
+use std::fmt::Debug;
 use std::str;
 
 use crate::error::{DNSError, DNSResult, InternalError};
@@ -66,32 +72,34 @@ pub struct DNSPacketFlags {
     pub recursion_available: bool, // Recursion Available - this be is set or cleared in a
     //  response, and denotes whether recursive query support is
     //  available in the name server.
-    pub z: u8, // Reserved for future use.  Must be zero in all queries and responses.
+    pub z: bool, // Reserved for future use.  Must be zero in all queries and responses.
+    pub authentic_data: bool,
+    pub checking_disabled: bool,
     pub response_code: ResponseCode, // Response code - this 4 bit field is set as part of
-               //responses.  The values have the following
-               //interpretation:
-               //0               No error condition
-               //1               Format error - The name server was
-               //                unable to interpret the query.
-               //2               Server failure - The name server was
-               //                unable to process this query due to a
-               //                problem with the name server.
-               //3               Name Error - Meaningful only for
-               //                responses from an authoritative name
-               //                server, this code signifies that the
-               //                domain name referenced in the query does
-               //                not exist.
-               //4               Not Implemented - The name server does
-               //                not support the requested kind of query.
-               //5               Refused - The name server refuses to
-               //                perform the specified operation for
-               //                policy reasons.  For example, a name
-               //                server may not wish to provide the
-               //                information to the particular requester,
-               //                or a name server may not wish to perform
-               //                a particular operation (e.g., zone
-               //                transfer) for particular data.
-               //6-15            Reserved for future use.
+                                     //responses.  The values have the following
+                                     //interpretation:
+                                     //0               No error condition
+                                     //1               Format error - The name server was
+                                     //                unable to interpret the query.
+                                     //2               Server failure - The name server was
+                                     //                unable to process this query due to a
+                                     //                problem with the name server.
+                                     //3               Name Error - Meaningful only for
+                                     //                responses from an authoritative name
+                                     //                server, this code signifies that the
+                                     //                domain name referenced in the query does
+                                     //                not exist.
+                                     //4               Not Implemented - The name server does
+                                     //                not support the requested kind of query.
+                                     //5               Refused - The name server refuses to
+                                     //                perform the specified operation for
+                                     //                policy reasons.  For example, a name
+                                     //                server may not wish to provide the
+                                     //                information to the particular requester,
+                                     //                or a name server may not wish to perform
+                                     //                a particular operation (e.g., zone
+                                     //                transfer) for particular data.
+                                     //6-15            Reserved for future use.
 }
 
 /// The flags' first bit is 0 or 1 meaning a question or a response. Better is to use an enum which is
@@ -158,7 +166,7 @@ pub enum ResponseCode {
 }
 
 // RR format
-#[derive(Debug, Default)]
+#[derive(Debug, Default, DnsStruct)]
 pub struct DnsResponse<'a> {
     pub name: DomainName<'a>, // an owner name, i.e., the name of the node to which this resource record pertains.
     pub r#type: QType,        // two octets containing one of the RR TYPE codes.
@@ -288,122 +296,6 @@ pub enum QType {
     DLV = 32769, // DNSSEC Lookaside Validation (OBSOLETE)	[RFC8749][RFC4431]
 }
 
-// impl Default for QType {
-//     fn default() -> Self {
-//         QType::A
-//     }
-// }
-
-// /// ```
-// /// use dnslib::rfc1035::QType;
-// ///
-// /// let qt = QType::try_from(14u16).unwrap();
-// /// assert_eq!(qt, QType::MINFO);
-// /// assert!(QType::try_from(0xFFFF).is_err());
-// /// ```
-// impl TryFrom<u16> for QType {
-//     type Error = String;
-
-//     fn try_from(value: u16) -> Result<Self, Self::Error> {
-//         match value {
-//             1 => Ok(QType::A),           // a host address	[RFC1035]
-//             2 => Ok(QType::NS),          // an authoritative name server	[RFC1035]
-//             3 => Ok(QType::MD),          // a mail destination (OBSOLETE - use MX)	[RFC1035]
-//             4 => Ok(QType::MF),          // a mail forwarder (OBSOLETE - use MX)	[RFC1035]
-//             5 => Ok(QType::CNAME),       // the canonical name for an alias	[RFC1035]
-//             6 => Ok(QType::SOA),         // marks the start of a zone of authority	[RFC1035]
-//             7 => Ok(QType::MB),          // a mailbox domain name (EXPERIMENTAL)	[RFC1035]
-//             8 => Ok(QType::MG),          // a mail group member (EXPERIMENTAL)	[RFC1035]
-//             9 => Ok(QType::MR),          // a mail rename domain name (EXPERIMENTAL)	[RFC1035]
-//             10 => Ok(QType::NULL),       // a null RR (EXPERIMENTAL)	[RFC1035]
-//             11 => Ok(QType::WKS),        // a well known service description	[RFC1035]
-//             12 => Ok(QType::PTR),        // a domain name pointer	[RFC1035]
-//             13 => Ok(QType::HINFO),      // host information	[RFC1035]
-//             14 => Ok(QType::MINFO),      // mailbox or mail list information	[RFC1035]
-//             15 => Ok(QType::MX),         // mail exchange	[RFC1035]
-//             16 => Ok(QType::TXT),        // text strings	[RFC1035]
-//             17 => Ok(QType::RP),         // for Responsible Person	[RFC1183]
-//             18 => Ok(QType::AFSDB),      // for AFS Data Base location	[RFC1183][RFC5864]
-//             19 => Ok(QType::X25),        // for X.25 PSDN address	[RFC1183]
-//             20 => Ok(QType::ISDN),       // for ISDN address	[RFC1183]
-//             21 => Ok(QType::RT),         // for Route Through	[RFC1183]
-//             22 => Ok(QType::NSAP),       // for NSAP address, NSAP style A record	[RFC1706]
-//             23 => Ok(QType::NSAPPTR),    // for domain name pointer, NSAP style	[RFC1706]
-//             24 => Ok(QType::SIG), // for security signature	[RFC2536][RFC2931][RFC3110][RFC4034]
-//             25 => Ok(QType::KEY), // for security key	[RFC2536][RFC2539][RFC3110][RFC4034]
-//             26 => Ok(QType::PX),  // X.400 mail mapping information	[RFC2163]
-//             27 => Ok(QType::GPOS), // Geographical Position	[RFC1712]
-//             28 => Ok(QType::AAAA), // IP6 Address	[RFC3596]
-//             29 => Ok(QType::LOC), // Location Information	[RFC1876]
-//             30 => Ok(QType::NXT), // Next Domain (OBSOLETE)	[RFC2535][RFC3755]
-//             31 => Ok(QType::EID), // Endpoint Identifier	[Michael_Patton][http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt]		1995-06
-//             32 => Ok(QType::NIMLOC), // Nimrod Locator	[1][Michael_Patton][http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt]		1995-06
-//             33 => Ok(QType::SRV),    // Server Selection	[1][RFC2782]
-//             34 => Ok(QType::ATMA), // ATM Address	[ ATM Forum Technical Committee, "ATM Name System, V2.0", Doc ID: AF-DANS-0152.000, July 2000. Available from and held in escrow by IANA.]
-//             35 => Ok(QType::NAPTR), // Naming Authority Pointer	[RFC3403]
-//             36 => Ok(QType::KX),   // Key Exchanger	[RFC2230]
-//             37 => Ok(QType::CERT), // CERT	[RFC4398]
-//             38 => Ok(QType::A6),   // A6 (OBSOLETE - use AAAA)	[RFC2874][RFC3226][RFC6563]
-//             39 => Ok(QType::DNAME), // DNAME	[RFC6672]
-//             40 => Ok(QType::SINK), // SINK	[Donald_E_Eastlake][draft-eastlake-kitchen-sink]		1997-11
-//             41 => Ok(QType::OPT),  // OPT	[RFC3225][RFC6891]
-//             42 => Ok(QType::APL),  // APL	[RFC3123]
-//             43 => Ok(QType::DS),   // Delegation Signer	[RFC4034]
-//             44 => Ok(QType::SSHFP), // SSH Key Fingerprint	[RFC4255]
-//             45 => Ok(QType::IPSECKEY), // IPSECKEY	[RFC4025]
-//             46 => Ok(QType::RRSIG), // RRSIG	[RFC4034]
-//             47 => Ok(QType::NSEC), // NSEC	[RFC4034][RFC9077]
-//             48 => Ok(QType::DNSKEY), // DNSKEY	[RFC4034]
-//             49 => Ok(QType::DHCID), // DHCID	[RFC4701]
-//             50 => Ok(QType::NSEC3), // NSEC3	[RFC5155][RFC9077]
-//             51 => Ok(QType::NSEC3PARAM), // NSEC3PARAM	[RFC5155]
-//             52 => Ok(QType::TLSA), // TLSA	[RFC6698]
-//             53 => Ok(QType::SMIMEA), // S/MIME cert association	[RFC8162]	SMIMEA/smimea-completed-template	2015-12-01
-//             54 => Ok(QType::Unassigned), //
-//             55 => Ok(QType::HIP),    // Host Identity Protocol	[RFC8005]
-//             56 => Ok(QType::NINFO),  // NINFO	[Jim_Reid]	NINFO/ninfo-completed-template	2008-01-21
-//             57 => Ok(QType::RKEY),   // RKEY	[Jim_Reid]	RKEY/rkey-completed-template	2008-01-21
-//             58 => Ok(QType::TALINK), // Trust Anchor LINK	[Wouter_Wijngaards]	TALINK/talink-completed-template	2010-02-17
-//             59 => Ok(QType::CDS),    // Child DS	[RFC7344]	CDS/cds-completed-template	2011-06-06
-//             60 => Ok(QType::CDNSKEY), // DNSKEY(s) the Child wants reflected in DS	[RFC7344]		2014-06-16
-//             61 => Ok(QType::OPENPGPKEY), // OpenPGP Key	[RFC7929]	OPENPGPKEY/openpgpkey-completed-template	2014-08-12
-//             62 => Ok(QType::CSYNC),      // Child-To-Parent Synchronization	[RFC7477]		2015-01-27
-//             63 => Ok(QType::ZONEMD), // Message Digest Over Zone Data	[RFC8976]	ZONEMD/zonemd-completed-template	2018-12-12
-//             64 => Ok(QType::SVCB), // Service Binding	[draft-ietf-dnsop-svcb-https-00]	SVCB/svcb-completed-template	2020-06-30
-//             65 => Ok(QType::HTTPS), // HTTPS Binding	[draft-ietf-dnsop-svcb-https-00]	HTTPS/https-completed-template	2020-06-30
-//             // Unassigned	66-98
-//             99 => Ok(QType::SPF),     // [RFC7208]
-//             100 => Ok(QType::UINFO),  // [IANA-Reserved]
-//             101 => Ok(QType::UID),    // [IANA-Reserved]
-//             102 => Ok(QType::GID),    // [IANA-Reserved]
-//             103 => Ok(QType::UNSPEC), // [IANA-Reserved]
-//             104 => Ok(QType::NID),    // [RFC6742]	ILNP/nid-completed-template
-//             105 => Ok(QType::L32),    // [RFC6742]	ILNP/l32-completed-template
-//             106 => Ok(QType::L64),    // [RFC6742]	ILNP/l64-completed-template
-//             107 => Ok(QType::LP),     // [RFC6742]	ILNP/lp-completed-template
-//             108 => Ok(QType::EUI48), // an EUI-48 address	[RFC7043]	EUI48/eui48-completed-template	2013-03-27
-//             109 => Ok(QType::EUI64), // an EUI-64 address	[RFC7043]	EUI64/eui64-completed-template	2013-03-27
-//             // Unassigned	110-248
-//             249 => Ok(QType::TKEY),     // Transaction Key	[RFC2930]
-//             250 => Ok(QType::TSIG),     // Transaction Signature	[RFC8945]
-//             251 => Ok(QType::IXFR),     // incremental transfer	[RFC1995]
-//             252 => Ok(QType::AXFR),     // transfer of an entire zone	[RFC1035][RFC5936]
-//             253 => Ok(QType::MAILB),    // mailbox-related RRs (MB, MG or MR)	[RFC1035]
-//             254 => Ok(QType::MAILA),    // mail agent RRs (OBSOLETE - see MX)	[RFC1035]
-//             255 => Ok(QType::STAR), // A request for some or all records the server has available	[RFC1035][RFC6895][RFC8482]
-//             256 => Ok(QType::URI),  // URI	[RFC7553]	URI/uri-completed-template	2011-02-22
-//             257 => Ok(QType::CAA), // Certification Authority Restriction	[RFC8659]	CAA/caa-completed-template	2011-04-07
-//             258 => Ok(QType::AVC), // Application Visibility and Control	[Wolfgang_Riedel]	AVC/avc-completed-template	2016-02-26
-//             259 => Ok(QType::DOA), // Digital Object Architecture	[draft-durand-doa-over-dns]	DOA/doa-completed-template	2017-08-30
-//             260 => Ok(QType::AMTRELAY), // Automatic Multicast Tunneling Relay	[RFC8777]	AMTRELAY/amtrelay-completed-template	2019-02-06
-//             // Unassigned	261-32767
-//             32768 => Ok(QType::TA), // DNSSEC Trust Authorities	[Sam_Weiler][http://cameo.library.cmu.edu/][ Deploying DNSSEC Without a Signed Root. Technical Report 1999-19, Information Networking Institute, Carnegie Mellon University, April 2004.]		2005-12-13
-//             32769 => Ok(QType::DLV), // DNSSEC Lookaside Validation (OBSOLETE)	[RFC8749][RFC4431]
-//             _ => Err(format!("Invalid QType value: {}!", value)),
-//         }
-//     }
-// }
-
 // RR Class values: https://datatracker.ietf.org/doc/html/rfc1035#section-3.2.4
 #[derive(Debug, Copy, Clone, PartialEq, DnsEnum)]
 #[repr(u16)]
@@ -415,97 +307,196 @@ pub enum QClass {
     ANY = 255,
 }
 
+// Character string as described in: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.4
+#[derive(Debug, Default, PartialEq)]
+pub struct CharacterString<'a> {
+    pub length: u8,
+    pub data: &'a str,
+}
+
+/// ```
+/// use std::io::Cursor;
+/// use dnslib::rfc1035::CharacterString;
+///
+/// let cs = CharacterString::from("www");
+/// assert_eq!(cs.length, 3u8);
+/// assert_eq!(cs.data, "www");
+/// ```  
+impl<'a> From<&'a str> for CharacterString<'a> {
+    fn from(s: &'a str) -> Self {
+        CharacterString {
+            length: s.len() as u8,
+            data: s,
+        }
+    }
+}
+
+/// ```
+/// use std::io::Cursor;
+/// use dnslib::rfc1035::CharacterString;
+///
+/// let cs = CharacterString::from("www");
+/// assert_eq!(cs.length, 3);
+/// assert_eq!(cs.to_string(), "www");
+/// ```
+impl<'a> fmt::Display for CharacterString<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.data)
+    }
+}
+
+// Domain name: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.4
+#[derive(Debug, PartialEq)]
+pub enum LabelType<'a> {
+    Label(CharacterString<'a>),
+    Root,
+}
+
+impl<'a> LabelType<'a> {
+    pub fn is_root(&self) -> bool {
+        matches!(self, LabelType::Root)
+    }
+}
+
+impl<'a> fmt::Display for LabelType<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LabelType::Label(label) => write!(f, "{}", label)?,
+            LabelType::Root => write!(f, ".")?,
+        }
+        Ok(())
+    }
+}
+
 // Domain name: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.4
 #[derive(Debug, Default)]
 pub struct DomainName<'a> {
-    pub labels: Vec<(u8, DomainType<'a>)>,
-    pub length: usize,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum DomainType<'a> {
-    Label(&'a [u8]),
-    Null,
-    Pointer(u8),
+    pub labels: Vec<LabelType<'a>>,
 }
 
 impl<'a> DomainName<'a> {
-    /// ```
-    /// use dnslib::rfc1035::{DomainName, DomainType};
-    /// use dnslib::network_order::dns::{SAMPLE_DOMAIN, SAMPLE_SLICE};
-    ///
-    /// let mut dn = DomainName::default();
-    /// dn.push_slice(SAMPLE_SLICE.as_slice());
-    ///
-    /// assert_eq!(dn.labels.len(), 4);
-    /// assert_eq!(dn.labels.get(0).unwrap(), &(3_u8, DomainType::Label("www".as_bytes())));
-    /// assert_eq!(dn.labels.get(1).unwrap(), &(6_u8, DomainType::Label("google".as_bytes())));
-    /// assert_eq!(dn.labels.get(2).unwrap(), &(2_u8, DomainType::Label("ie".as_bytes())));
-    /// assert_eq!(dn.labels.get(3).unwrap(), &(0_u8, DomainType::Null));
-    /// assert_eq!(dn.length, 11);
-    /// ```    
-    pub fn push_slice(&mut self, value: &'a [u8]) -> DNSResult<()> {
-        //dbg!(value[0]);
-        //println!("slice====> {:X?}", value);
+    pub fn from_position(&mut self, pos: usize, buffer: &&'a [u8]) -> DNSResult<usize> {
+        let mut index = pos;
 
-        // if we already have a sentinel, delete it because it'll be added
-        // with new slice
-        if !self.labels.is_empty() {
-            self.labels.truncate(self.labels.len());
-        }
-
-        // loop through the vector
-        let mut index = 0usize;
+        // println!(
+        //     "starting at position: {} with value: {:X?} ({})",
+        //     index, buffer[index], buffer[index]
+        // );
 
         loop {
-            let size = value[index];
-
-            // if we've reached a sentinel, exit
-            if size == 0 {
-                self.labels.push((0, DomainType::Null));
+            // we reach the sentinel
+            if buffer[index] == 0 {
                 break;
-            } else if is_pointer(size) {
-                self.labels.push((size, DomainType::Pointer(size)));
-                break;
-            // otherwise copy references to inner data
-            } else {
-                self.labels.push((
-                    size,
-                    DomainType::Label(&value[index + 1..index + 1 + size as usize]),
-                ));
-                self.length += size as usize;
-
-                // adjust index
-                index += size as usize + 1;
             }
+
+            // we reached a pointer
+            // From RFC1035:
+            //
+            // The pointer takes the form of a two octet sequence:
+            // +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+            // | 1  1|                OFFSET                   |
+            // +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+            //
+            //    The first two bits are ones.  This allows a pointer to be distinguished
+            //    from a label, since the label must begin with two zero bits because
+            //    labels are restricted to 63 octets or less.  (The 10 and 01 combinations
+            //    are reserved for future use.)  The OFFSET field specifies an offset from
+            //    the start of the message (i.e., the first octet of the ID field in the
+            //    domain header).  A zero offset specifies the first byte of the ID field,
+            //    etc.
+            //if buffer[index] >= 192 {
+            if is_pointer(buffer[index]) {
+                // get pointer which is on 2 bytes
+                let ptr = [buffer[index], buffer[index + 1]];
+                let pointer = u16::from_be_bytes(ptr);
+
+                // println!("pointer={:0b}", pointer);
+                // println!("pointer shifted={:0b}", (pointer << 2) >> 2);
+
+                let pointer = ((pointer << 2) >> 2) as usize;
+                //println!("pointer={:0b}", pointer);
+
+                // recursively call the same method with the pointer as starting point
+                let _ = self.from_position(pointer as usize, buffer);
+                return Ok(index + 2);
+            }
+
+            // otherwise, regular processing: the first byte is the string length
+            let size = buffer[index] as usize;
+
+            // then we convert the label into UTF8
+            let label = &buffer[index + 1..index + size + 1];
+            let label_as_utf8 = std::str::from_utf8(label)?;
+            //println!("ss={}", ss);
+
+            self.labels
+                .push(LabelType::Label(CharacterString::from(label_as_utf8)));
+
+            // adjust index
+            index += size + 1;
         }
 
+        // add the root
+        self.labels.push(LabelType::Root);
+
+        // println!(
+        //     "end index: {} with value: {:X?}",
+        //     index + 1,
+        //     buffer[index + 1]
+        // );
+
+        Ok(index + 1)
+    }
+}
+
+/// ```
+/// use dnslib::rfc1035::DomainName;
+///
+/// let mut dn = DomainName::try_from("www.google.com").unwrap();
+/// assert_eq!(dn.to_string(), "www.google.com.");
+///
+/// let mut dn = DomainName::try_from("www.google.ie.").unwrap();
+/// assert_eq!(dn.to_string(), "www.google.ie.");
+/// ```
+impl<'a> fmt::Display for DomainName<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        debug_assert!(self.labels.len() >= 1);
+
+        // if only the root
+        if self.labels[0].is_root() {
+            write!(f, ".")?;
+        } else {
+            // just print out all data
+            for label in &self.labels {
+                if !label.is_root() {
+                    write!(f, "{}.", label)?;
+                }
+            }
+        }
         Ok(())
     }
 }
 
 /// ```
-/// use dnslib::rfc1035::{DomainName, DomainType};
+/// use dnslib::rfc1035::{DomainName, LabelType, CharacterString};
 ///
 /// let dn = DomainName::try_from("www.example.com").unwrap();
 /// assert_eq!(dn.labels.len(), 4);
-/// assert_eq!(dn.labels.get(0).unwrap(), &(3_u8, DomainType::Label("www".as_bytes())));
-/// assert_eq!(dn.labels.get(1).unwrap(), &(7_u8, DomainType::Label("example".as_bytes())));
-/// assert_eq!(dn.labels.get(2).unwrap(), &(3_u8, DomainType::Label("com".as_bytes())));
-/// assert_eq!(dn.labels.get(3).unwrap(), &(0_u8, DomainType::Null));
-/// assert_eq!(dn.length, 13);
+/// assert_eq!(dn.labels, &[
+///     LabelType::Label(CharacterString::from("www")),
+///     LabelType::Label(CharacterString::from("example")),
+///     LabelType::Label(CharacterString::from("com")),
+///     LabelType::Root
+/// ]);
 ///
 /// let dn = DomainName::try_from("com.").unwrap();
 /// assert_eq!(dn.labels.len(), 2);
-/// assert_eq!(dn.labels.get(0).unwrap(), &(3_u8, DomainType::Label("com".as_bytes())));
-/// assert_eq!(dn.labels.get(1).unwrap(), &(0_u8, DomainType::Null));
-/// assert_eq!(dn.length, 3);
+/// assert_eq!(dn.labels, &[LabelType::Label(CharacterString::from("com")), LabelType::Root]);
 ///
 /// let dn = DomainName::try_from(".").unwrap();
 /// assert_eq!(dn.labels.len(), 1);
-/// assert_eq!(dn.labels.get(0).unwrap().1, DomainType::Null);
-/// assert_eq!(dn.length, 0);
-///
+/// assert_eq!(dn.labels, &[LabelType::Root]);
+
 /// assert!(DomainName::try_from("").is_err());
 /// ```
 impl<'a> TryFrom<&'a str> for DomainName<'a> {
@@ -518,82 +509,22 @@ impl<'a> TryFrom<&'a str> for DomainName<'a> {
         }
 
         // handle case for root domain
-        let label_list: Vec<_> = if domain == "." {
-            vec![(0, DomainType::Null)]
+        let mut label_list: Vec<_> = if domain == "." {
+            vec![]
         } else {
-            // split input into individual labels
-            let mut labels: Vec<_> = domain.split('.').collect();
-
-            // for: "www.example.com" => ["www", "example", "com"]
-            // for: "www.example.com." => ["www", "example", "com", ""]
-            // for: "com" => ["com"]
-            // to handle these cases, need to check the if the last element is not ""
-            if labels.is_empty() {
-                return Err(DNSError::DNSInternalError(InternalError::EmptyDomainName));
-            }
-
-            if !labels.last().unwrap().is_empty() {
-                labels.push("");
-            }
-
-            labels
-                .iter()
-                .map(|x| {
-                    if x.is_empty() {
-                        (0, DomainType::Null)
-                    } else {
-                        (x.len() as u8, DomainType::Label(x.as_bytes()))
-                    }
-                })
+            domain
+                .split('.')
+                .filter(|x| !x.is_empty())
+                .map(|x| LabelType::Label(CharacterString::from(x)))
                 .collect()
         };
 
-        // calculate domain name length
-        let length = label_list.iter().map(|x| x.0 as usize).sum();
+        // add final root
+        label_list.push(LabelType::Root);
 
-        // check length
-        debug_assert!(length <= 255);
-
-        // check whether label's length is <= 63
-        // for label in &label_list {
-        //     if label.as_bytes().len() > 63 {
-        //         return Err(format!("label <{}> length is over 63 characters", label));
-        //     }
-        // }
-
-        Ok(DomainName {
-            labels: label_list,
-            length: length,
-        })
+        Ok(DomainName { labels: label_list })
     }
 }
-
-/// ```
-/// use dnslib::rfc1035::DomainName;
-/// use dnslib::network_order::dns::{SAMPLE_DOMAIN, SAMPLE_SLICE};
-///
-/// let mut dn = DomainName::default();
-/// dn.push_slice(SAMPLE_SLICE.as_slice());
-///
-/// assert_eq!(dn.to_string(), "www.google.ie.");
-/// ```
-impl<'a> fmt::Display for DomainName<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s = String::new();
-
-        self.labels.iter().for_each(|label| {
-            if let DomainType::Label(l) = label.1 {
-                s.push_str(str::from_utf8(l).unwrap());
-                s.push_str(".");
-            }
-        });
-
-        write!(f, "{}", s)
-    }
-}
-
-// Character string as described in: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.4
-pub type CharacterString<'a> = &'a str;
 
 //--------------------------------------------------------------------------------
 // Question structure: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.2
@@ -685,17 +616,27 @@ pub type RDATA = u32;
 
 // OPT RR: https://datatracker.ietf.org/doc/html/rfc6891#section-6.1.2
 // RR format
+// +------------+--------------+------------------------------+
+// | Field Name | Field Type   | Description                  |
+// +------------+--------------+------------------------------+
+// | NAME       | domain name  | MUST be 0 (root domain)      |
+// | TYPE       | u_int16_t    | OPT (41)                     |
+// | CLASS      | u_int16_t    | requestor's UDP payload size |
+// | TTL        | u_int32_t    | extended RCODE and flags     |
+// | RDLEN      | u_int16_t    | length of all RDATA          |
+// | RDATA      | octet stream | {attribute,value} pairs      |
+// +------------+--------------+------------------------------+
 #[derive(Debug, DnsStruct)]
-pub struct OPT {
-    pub name: u8,              // MUST be 0 (root domain)
-    pub r#type: QType,         // OPT (41)
-    pub udp_payload_size: u16, // requestor's UDP payload size
-    pub ttl: OptTTL,           // extended RCODE and flags
-    pub rd_length: u16,        // length of all RDATA
-                               //pub r_data: T              // {attribute,value} pairs
+pub struct OPT<'a> {
+    pub name: u8,                                              // MUST be 0 (root domain)
+    pub r#type: QType,                                         // OPT (41)
+    pub udp_payload_size: u16,                                 // requestor's UDP payload size
+    pub ttl: OptTTL,                                           // extended RCODE and flags
+    pub rd_length: u16,                                        // length of all RDATA
+    pub rd_data: Option<Vec<Box<dyn ToFromNetworkOrder<'a>>>>, // {attribute,value} pairs (OptData struct)
 }
 
-impl Default for OPT {
+impl<'a> Default for OPT<'a> {
     fn default() -> Self {
         Self {
             name: 0,
@@ -703,6 +644,7 @@ impl Default for OPT {
             udp_payload_size: 4096,
             ttl: OptTTL::default(),
             rd_length: 0,
+            rd_data: None,
         }
     }
 }
@@ -754,9 +696,133 @@ impl OptTTL {
 //    /                                                               /
 //    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 
-pub struct OptData<T> {
+#[derive(Debug, Default, DnsStruct)]
+pub struct OptData<'a, T: Debug + ToFromNetworkOrder<'a>> {
     option_code: u16, // Assigned by the Expert Review process as defined by the DNSEXT
     // working group and the IESG.
-    option_length: u16, // Size (in octets) of OPTION-DATA.
-    option_data: T,     // Varies per OPTION-CODE.  MUST be treated as a bit field
+    option_length: u16,                       // Size (in octets) of OPTION-DATA.
+    option_data: T, // Varies per OPTION-CODE.  MUST be treated as a bit field
+    phantom: std::marker::PhantomData<&'a T>, // the trick for Rust
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::util::get_sample_slice;
+    use crate::{test_from_network, test_to_network};
+
+    #[test]
+    fn dns_packet_header() {
+        const PACKET: &'static str = r#"
+0000   76 86 81 a0 00 01 00 08 00 00 00 01 
+        "#;
+
+        // from
+        let dns_packet_header = test_from_network!(PACKET, DNSPacketHeader);
+        assert_eq!(dns_packet_header.id, 0x7686);
+        assert_eq!(dns_packet_header.flags.packet_type, PacketType::Response);
+        assert_eq!(dns_packet_header.flags.op_code, OpCode::Query);
+        assert!(!dns_packet_header.flags.authorative_answer);
+        assert!(!dns_packet_header.flags.truncated);
+        assert!(dns_packet_header.flags.recursion_desired);
+        assert!(dns_packet_header.flags.recursion_available);
+        assert!(!dns_packet_header.flags.z);
+        assert!(dns_packet_header.flags.authentic_data);
+        assert!(!dns_packet_header.flags.checking_disabled);
+        assert_eq!(dns_packet_header.flags.response_code, ResponseCode::NoError);
+        assert_eq!(dns_packet_header.qd_count, 1);
+        assert_eq!(dns_packet_header.an_count, 8);
+        assert_eq!(dns_packet_header.ns_count, 0);
+        assert_eq!(dns_packet_header.ar_count, 1);
+
+        // to
+        let values = test_to_network!(dns_packet_header);
+        assert_eq!(values.0, get_sample_slice(PACKET));
+        assert_eq!(values.1, 12);
+    }
+
+    #[test]
+    fn domain_name_from_position() {
+        const PACKET: &'static str = r#"
+0000   76 86 81 a0 00 01 00 08 00 00 00 01 02 68 6b 00
+0010   00 02 00 01 c0 0c 00 02 00 01 00 00 54 60 00 0e
+0020   01 7a 05 68 6b 69 72 63 03 6e 65 74 c0 0c c0 0c
+0030   00 02 00 01 00 00 54 60 00 04 01 64 c0 22 c0 0c
+0040   00 02 00 01 00 00 54 60 00 04 01 78 c0 22 c0 0c
+0050   00 02 00 01 00 00 54 60 00 04 01 75 c0 22 c0 0c
+0060   00 02 00 01 00 00 54 60 00 04 01 63 c0 22 c0 0c
+0070   00 02 00 01 00 00 54 60 00 04 01 74 c0 22 c0 0c
+0080   00 02 00 01 00 00 54 60 00 04 01 76 c0 22 c0 0c
+0090   00 02 00 01 00 00 54 60 00 04 01 79 c0 22 00 00
+00a0   29 02 00 00 00 00 00 00 00
+"#;
+
+        let v = get_sample_slice(PACKET);
+        let s = v.as_slice();
+        let cursor = std::io::Cursor::new(&s);
+
+        let mut dn = DomainName::default();
+        let i = dn.from_position(12, &cursor.get_ref()).unwrap();
+        assert_eq!(i, 16);
+        assert_eq!(
+            dn.labels,
+            &[
+                LabelType::Label(CharacterString::from("hk")),
+                LabelType::Root
+            ]
+        );
+
+        let mut dn = DomainName::default();
+        let i = dn.from_position(20, &cursor.get_ref()).unwrap();
+        assert_eq!(i, 22);
+        assert_eq!(
+            dn.labels,
+            &[
+                LabelType::Label(CharacterString::from("hk")),
+                LabelType::Root
+            ]
+        );
+
+        let mut dn = DomainName::default();
+        let i = dn.from_position(32, &cursor.get_ref()).unwrap();
+        assert_eq!(i, 46);
+        assert_eq!(
+            dn.labels,
+            &[
+                LabelType::Label(CharacterString::from("z")),
+                LabelType::Label(CharacterString::from("hkirc")),
+                LabelType::Label(CharacterString::from("net")),
+                LabelType::Label(CharacterString::from("hk")),
+                LabelType::Root
+            ]
+        );
+
+        let mut dn = DomainName::default();
+        let i = dn.from_position(58, &cursor.get_ref()).unwrap();
+        assert_eq!(i, 62);
+        assert_eq!(
+            dn.labels,
+            &[
+                LabelType::Label(CharacterString::from("d")),
+                LabelType::Label(CharacterString::from("hkirc")),
+                LabelType::Label(CharacterString::from("net")),
+                LabelType::Label(CharacterString::from("hk")),
+                LabelType::Root
+            ]
+        );
+
+        let mut dn = DomainName::default();
+        let i = dn.from_position(58 + 16, &cursor.get_ref()).unwrap();
+        assert_eq!(i, 62 + 16);
+        assert_eq!(
+            dn.labels,
+            &[
+                LabelType::Label(CharacterString::from("x")),
+                LabelType::Label(CharacterString::from("hkirc")),
+                LabelType::Label(CharacterString::from("net")),
+                LabelType::Label(CharacterString::from("hk")),
+                LabelType::Root
+            ]
+        );
+    }
 }

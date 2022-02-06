@@ -10,6 +10,7 @@ pub struct CliOptions {
     pub qtype: QType,
     pub ns: String,
     pub domain: String,
+    pub no_opt: bool,
     pub debug: bool,
 }
 
@@ -57,6 +58,14 @@ impl CliOptions {
                     .long_help("Debug mode")
                     .takes_value(false),
             )
+            .arg(
+                Arg::new("no-opt")
+                    .short('o')
+                    .long("no-opt")
+                    .required(false)
+                    .long_help("Debug mode")
+                    .takes_value(false),
+            )
             .get_matches();
 
         // save all cli options into a structure
@@ -65,6 +74,7 @@ impl CliOptions {
         options.ns = String::from(matches.value_of("ns").unwrap());
         options.domain = String::from(matches.value_of("domain").unwrap());
         options.qtype = QType::from_str(&matches.value_of("qtype").unwrap().to_uppercase())?;
+        options.no_opt = matches.is_present("no-opt");
         options.debug = matches.is_present("debug");
 
         Ok(options)

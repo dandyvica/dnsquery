@@ -4,7 +4,6 @@ use rand::Rng;
 
 use dnslib::{
     error::DNSResult,
-    query::DnsQuery,
     rfc1035::{DNSPacket, DNSQuestion, DomainName, OpCode, PacketType, QClass, QType},
 };
 

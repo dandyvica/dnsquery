@@ -1,23 +1,21 @@
 //! All functions/trait to convert DNS structures to network order back & forth
+use std::net::UdpSocket;
+
 use rand::Rng;
 
-use crate::derive_enum;
-use crate::error::{DNSError, DNSResult};
+use crate::error::DNSResult;
 use crate::network_order::ToFromNetworkOrder;
-use crate::rfc1035::{
-    CharacterString, DNSPacket, DNSPacketFlags, DNSPacketHeader, DNSQuestion, DnsResponse,
-    DomainName, DomainType, OpCode, PacketType, QClass, QType, ResponseCode, OPT,
-};
-use dns_derive::{DnsEnum, DnsStruct};
+use crate::rfc1035::{DNSPacketHeader, DNSQuestion, OpCode, PacketType, OPT};
+use dns_derive::DnsStruct;
 
 #[derive(Debug, DnsStruct)]
-pub struct DnsQuery<'a> {
-    header: DNSPacketHeader,
-    questions: Vec<DNSQuestion<'a>>,
-    opt: Option<OPT>,
+pub struct DNSQuery<'a> {
+    pub header: DNSPacketHeader,
+    pub questions: Vec<DNSQuestion<'a>>,
+    pub opt: Option<OPT<'a>>,
 }
 
-impl<'a> Default for DnsQuery<'a> {
+impl<'a> Default for DNSQuery<'a> {
     fn default() -> Self {
         let mut header = DNSPacketHeader::default();
 
@@ -39,7 +37,7 @@ impl<'a> Default for DnsQuery<'a> {
     }
 }
 
-impl<'a> DnsQuery<'a> {
+impl<'a> DNSQuery<'a> {
     // Add another question into the list of questions to send
     pub fn push_question(&mut self, question: DNSQuestion<'a>) {
         self.questions.push(question);
@@ -49,27 +47,15 @@ impl<'a> DnsQuery<'a> {
     }
 
     // Send the query through the wire
-    // pub fn send(
-    //     &self,
-    //     domain: &str,
-    //     socket: &UdpSocket,
-    //     endpoint: &str,
-    //     debug: bool,
-    // ) -> DNSResult<()> {
-    //     if debug {
-    //         eprintln!("{:#?}", dns_packet);
-    //     }
+    pub fn send(&self, socket: &UdpSocket, endpoint: &str) -> DNSResult<()> {
+        // convert to network bytes
+        let mut buffer: Vec<u8> = Vec::new();
+        self.to_network_bytes(&mut buffer)?;
 
-    //     println!("question: {}", DisplayWrapper(&self.header));
+        // send packet through the wire
+        let dest = format!("{}:53", endpoint);
+        socket.send_to(&buffer, dest)?;
 
-    //     // convert to network bytes
-    //     let mut buffer: Vec<u8> = Vec::new();
-    //     dns_packet.to_network_bytes(&mut buffer)?;
-
-    //     // send packet through the wire
-    //     let dest = format!("{}:53", endpoint);
-    //     socket.send_to(&buffer, dest)?;
-
-    //     Ok(())
-    // }
+        Ok(())
+    }
 }

@@ -6,9 +6,10 @@ use std::io::Cursor;
 use dnslib::{
     error::DNSResult,
     network_order::ToFromNetworkOrder,
+    query::DNSQuery,
     rfc1035::{
-        DNSPacketFlags, DNSPacketHeader, DnsResponse, DomainName, PacketType, QType, A, AAAA,
-        HINFO, MX, NS, SOA, TXT,
+        DNSPacketFlags, DNSPacketHeader, DNSQuestion, DnsResponse, DomainName, PacketType, QType,
+        A, AAAA, HINFO, MX, NS, SOA, TXT,
     },
 };
 
@@ -61,8 +62,8 @@ impl fmt::Display for DisplayWrapper<'_, DNSPacketHeader> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // output depends on whether it's a query or a response
         // because some fields are unnecessary when Query or Response
-        write!(f, "id:{:X} ", self.0.id)?;
-        write!(f, "flags:{} ", DisplayWrapper(&self.0.flags))?;
+        write!(f, "id:{:X}({}) ", self.0.id, self.0.id)?;
+        write!(f, "flags:[{}] ", DisplayWrapper(&self.0.flags))?;
 
         if self.0.flags.packet_type == PacketType::Query {
             write!(f, "qd:{}", self.0.qd_count)
@@ -98,11 +99,37 @@ impl fmt::Display for DisplayWrapper<'_, DNSPacketFlags> {
     }
 }
 
+impl fmt::Display for DisplayWrapper<'_, DNSQuestion<'_>> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "domain:{} qtype:{:?} class:{:?}",
+            self.0.name, self.0.r#type, self.0.class
+        )
+    }
+}
+
+impl fmt::Display for DisplayWrapper<'_, DNSQuery<'_>> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // header first
+        write!(f, "{} ", DisplayWrapper(&self.0.header))?;
+
+        // all questions (usually only 1)
+        for (i, question) in self.0.questions.iter().enumerate() {
+            write!(f, "question#{}: [{}]", i + 1, DisplayWrapper(question))?;
+        }
+
+        // now OPT data for EDNS0
+        write!(f, "")
+    }
+}
+
 // The global display method
 pub fn display_data<'a>(cursor: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
     // receive data
     let mut response = DnsResponse::default();
     response.from_network_bytes(cursor)?;
+    //println!("{:#?}", response);
 
     // check out RR
     print!("qtype:{:?} qclass:{:?}\t", response.r#type, response.class);

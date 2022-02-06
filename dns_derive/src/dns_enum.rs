@@ -1,22 +1,69 @@
-// create enum implementations for Default, TryFrom, FromStr for TLS enums
+// Create enum implementations for Default, TryFrom, FromStr for DNS enums
 // which are always of the same category.
-//
-// Ex
-//
-// enum Foo {
-//     x = 0,
-//     y = 1,
-//     z = 2,
-//     t = 255,
-// }
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Data, DataEnum, DeriveInput};
+use syn::{Data, DeriveInput};
 
-// verify if the derive macro is applied to an enum
-fn get_enum(ast: &DeriveInput) -> &DataEnum {
-    if let Data::Enum(struct_token) = &ast.data {
-        struct_token
+// Verify if the derive macro can applied to an enum which has no
+// non-unit variants
+//
+// This function panics in this cases:
+//  enum Foo { A(u8), B, C } : all enum variants not unit variants
+//  enum Foo { A = 1, B, C, D } : at least one variant has no discriminant
+//  enum Foo { A = 1, B = 3*4 } : at least one variant discriminant is not a literal
+fn get_enum_data(ast: &DeriveInput) -> Vec<(String, String)> {
+    // check first this is an enum
+    if let Data::Enum(enum_token) = &ast.data {
+        // get all variants
+        let variants: Vec<_> = enum_token.variants.iter().collect();
+
+        // this will hold all variant data
+        let mut variant_data = Vec::new();
+
+        // test all variants
+        for v in variants {
+            // all enum variants should be unit variants
+            if !matches!(v.fields, syn::Fields::Unit) {
+                panic!(
+                    "variant {} for enum {} is not a unit variant!",
+                    v.ident, ast.ident
+                );
+            }
+
+            // at least one variant has no discriminant
+            if v.discriminant.is_none() {
+                panic!("at least one variant for enum {} has no value!", ast.ident);
+            }
+
+            // we can create the discriminant now and make other checks
+            let discriminant = v.discriminant.as_ref().unwrap();
+            let literal = &discriminant.1;
+
+            // all discriminants should be literals
+            if let syn::Expr::Lit(expr_lit) = literal {
+                //println!("expr_lit={:?}", expr_lit);
+
+                // expression should contain an integer
+                if let syn::Lit::Int(e) = &expr_lit.lit {
+                    variant_data.push((v.ident.to_string(), e.base10_digits().to_string()));
+                } else {
+                    panic!(
+                        "variant {} is not an integer literal for enum {}",
+                        ast.ident,
+                        v.ident.to_string()
+                    );
+                }
+            } else {
+                panic!(
+                    "not ExprLit for enum {} and variant {}!",
+                    ast.ident,
+                    v.ident.to_string()
+                );
+            }
+        }
+
+        // now it's safe to return the enum
+        variant_data
     } else {
         panic!("<{}> is not an enum!", ast.ident.to_string());
     }
@@ -25,60 +72,11 @@ fn get_enum(ast: &DeriveInput) -> &DataEnum {
 // create code for implementation of standard trait: Default, TryFrom<u8>, FromStr
 pub fn dns_enum(ast: &DeriveInput) -> TokenStream {
     // get enum data or panic
-    let enum_token = get_enum(&ast);
+    let variant_data = get_enum_data(&ast);
 
     // grab enum name as an ident and as a string
     let enum_name = &ast.ident;
     let enum_name_s = enum_name.to_string();
-
-    // get vector of tuples: (variant name, variant value)
-    let variant_data: Vec<_> = enum_token
-        .variants
-        .iter()
-        .map(|v| {
-            //println!("{:?}", v);
-
-            if !matches!(v.fields, syn::Fields::Unit) {
-                panic!(
-                    "not a unit enum variant for enum {} for variant {}!",
-                    enum_name,
-                    v.ident.to_string()
-                );
-            }
-
-            if v.discriminant.is_none() {
-                panic!(
-                    "wrong variant {} category for enum {}!",
-                    v.ident.to_string(),
-                    enum_name
-                );
-            }
-
-            let disc = v.discriminant.as_ref().unwrap();
-            let lit = &disc.1;
-
-            if let syn::Expr::Lit(expr_lit) = lit {
-                //println!("expr_lit={:?}", expr_lit);
-
-                // expression should contain an integer
-                if let syn::Lit::Int(e) = &expr_lit.lit {
-                    (v.ident.to_string(), e.base10_digits())
-                } else {
-                    panic!(
-                        "variant {} is not an integer literal for enum {}",
-                        enum_name,
-                        v.ident.to_string()
-                    );
-                }
-            } else {
-                panic!(
-                    "not ExprLit for enum {} and variant {}!",
-                    enum_name,
-                    v.ident.to_string()
-                );
-            }
-        })
-        .collect();
 
     // create tokenstreams for impl Default, TryFrom, FromStr
     let default_variant = format_ident!("{}", variant_data[0].0);
@@ -102,17 +100,6 @@ pub fn dns_enum(ast: &DeriveInput) -> TokenStream {
             #value => Ok(#enum_name::#variant),
         }
     });
-
-    // let display = variant_data.iter().map(|v| {
-    //     // create value and identifier
-    //     let value_variant = &v.0;
-    //     let value_int = v.1.parse::<u8>().unwrap();
-    //     let variant = format_ident!("{}", &v.0);
-
-    //     quote! {
-    //         #enum_name::#variant => write!(f, "{}({})", #value_variant, #value_int),
-    //     }
-    // });
 
     // now create code for implementation of Default, TryFrom<u8>, FromStr
     let impls = quote! {
@@ -155,17 +142,64 @@ pub fn dns_enum(ast: &DeriveInput) -> TokenStream {
                 }
             }
         }
-
-        // impl Display
-        // impl std::fmt::Display for #enum_name {
-        //     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        //         match self {
-        //             #(#display)*
-        //         }
-        //     }
-        // }
     };
 
     // Hand the output tokens back to the compiler
     TokenStream::from(impls)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::get_derive_input;
+
+    const E1: &'static str = "enum Foo { A(u8), B, C }";
+    const E2: &'static str = "enum Foo { A = 1, B, C, D }";
+    const E3: &'static str = "enum Foo { A = 2*3, B = 1 }";
+    const E4: &'static str = "enum Foo { A = 1, B = 2, C = 3 }";
+    const S1: &'static str = "struct Point { x : f64 , y : u8 , z : u32 }";
+
+    #[test]
+    #[should_panic]
+    fn not_an_enum() {
+        let input = get_derive_input(S1);
+        let _ = get_enum_data(&input);
+    }
+
+    #[test]
+    #[should_panic]
+    fn not_all_unit_variants() {
+        let input = get_derive_input(E1);
+        let _ = get_enum_data(&input);
+    }
+
+    #[test]
+    #[should_panic]
+    fn not_all_unit_discriminants() {
+        let input = get_derive_input(E2);
+        let _ = get_enum_data(&input);
+    }
+
+    #[test]
+    #[should_panic]
+    fn not_all_literal_discriminants() {
+        let input = get_derive_input(E3);
+        let _ = get_enum_data(&input);
+    }
+
+    #[test]
+    fn variant_data() {
+        let input = get_derive_input(E4);
+        let v = get_enum_data(&input);
+
+        assert_eq!(
+            v,
+            vec![
+                ("A".to_string(), "1".to_string()),
+                ("B".to_string(), "2".to_string()),
+                ("C".to_string(), "3".to_string()),
+            ]
+        );
+    }
 }

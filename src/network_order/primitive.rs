@@ -134,7 +134,27 @@ impl<'a> ToFromNetworkOrder<'a> for &[u8] {
     }
 
     fn from_network_bytes(&mut self, _v: &mut Cursor<&[u8]>) -> DNSResult<()> {
-        Ok(())
+        unimplemented!("&[u8].from_network_bytes()");
+        //Ok(())
+    }
+}
+
+impl<'a> ToFromNetworkOrder<'a> for &'a str {
+    /// ```
+    /// use dnslib::network_order::ToFromNetworkOrder;
+    ///
+    /// let mut buffer: Vec<u8> = Vec::new();
+    /// assert!(&[0x12_u8, 0x34, 0x56, 0x78].to_network_bytes(&mut buffer).is_ok());
+    /// assert_eq!(buffer, &[0x12, 0x34, 0x56, 0x78]);
+    /// ```
+    fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
+        buffer.append(&mut self.as_bytes().to_vec());
+        Ok(self.len())
+    }
+
+    fn from_network_bytes(&mut self, _v: &mut Cursor<&[u8]>) -> DNSResult<()> {
+        unimplemented!("&str.from_network_bytes()");
+        //Ok(())
     }
 }
 
@@ -271,6 +291,42 @@ where
             u.from_network_bytes(buffer)?;
             self.push(u);
         }
+        Ok(())
+    }
+}
+
+impl<'a> ToFromNetworkOrder<'a> for Vec<Box<dyn ToFromNetworkOrder<'a>>> {
+    /// ```
+    /// use dnslib::network_order::ToFromNetworkOrder;
+    ///
+    /// let mut buffer: Vec<u8> = Vec::new();
+    /// let v: Vec<Box<dyn ToFromNetworkOrder>> = vec![Box::new(0xFFu8), Box::new(0x1234u16), Box::new(0x12345678u32)];
+    /// assert_eq!(v.to_network_bytes(&mut buffer).unwrap(), 7);
+    /// //assert_eq!(&buffer, &[0xFF; 18]);
+    /// ```    
+    fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
+        let mut length = 0usize;
+
+        // copy data for each element
+        for item in self {
+            length += item.to_network_bytes(buffer)?;
+        }
+
+        Ok(length)
+    }
+
+    fn from_network_bytes(&mut self, _buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
+        unimplemented!("Vec<Box<dyn ToFromNetworkOrder<'a>>>.from_network_bytes()");
+        //Ok(())
+    }
+}
+
+impl<'a, T> ToFromNetworkOrder<'a> for std::marker::PhantomData<&'a T> {
+    fn to_network_bytes(&self, _buffer: &mut Vec<u8>) -> Result<usize> {
+        Ok(0)
+    }
+
+    fn from_network_bytes(&mut self, _buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
         Ok(())
     }
 }

@@ -41,3 +41,25 @@ macro_rules! derive_enum {
         }
     };
 }
+
+// useful helpers for tests
+#[macro_export]
+macro_rules! test_from_network {
+    ($slice:ident, $t:ty) => {{
+        let s = crate::util::get_sample_slice($slice);
+        let mut buffer = std::io::Cursor::new(s.as_slice());
+        let mut v = <$t>::default();
+        assert!(v.from_network_bytes(&mut buffer).is_ok());
+        v
+    }};
+}
+
+#[macro_export]
+macro_rules! test_to_network {
+    ($data:ident) => {{
+        let mut buffer: Vec<u8> = Vec::new();
+        let bytes_written = $data.to_network_bytes(&mut buffer).unwrap();
+
+        (buffer, bytes_written)
+    }};
+}

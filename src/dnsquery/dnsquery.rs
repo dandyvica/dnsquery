@@ -6,7 +6,10 @@ use std::net::UdpSocket;
 use dnslib::{
     error::DNSResult,
     network_order::ToFromNetworkOrder,
-    rfc1035::{DNSPacket, DNSPacketHeader, DNSQuestion, QType, ResponseCode, MAX_DNS_PACKET_SIZE},
+    query::DNSQuery,
+    rfc1035::{
+        DNSPacket, DNSPacketHeader, DNSQuestion, QType, ResponseCode, MAX_DNS_PACKET_SIZE, OPT,
+    },
     util::pretty_cursor,
 };
 
@@ -27,20 +30,29 @@ fn main() -> DNSResult<()> {
         eprintln!("{:#?}", options);
     }
 
-    // bind to an ephermeral local port
+    // bind to an ephemeral local port
     let socket = UdpSocket::bind("0.0.0.0:0")?;
 
-    // build and send query
-    send_query(
-        &options.domain,
-        &socket,
-        &options.ns,
-        options.qtype,
-        options.debug,
-    )?;
+    // create the query from command line arguments
+    let mut query = DNSQuery::default();
+    let question = DNSQuestion::new(&options.domain, options.qtype, None)?;
+    query.push_question(question);
+
+    // by default we want OPT
+    if !options.no_opt {
+        query.opt = Some(OPT::default());
+    }
+
+    println!("QUERY: {}", DisplayWrapper(&query));
+    if options.debug {
+        eprintln!("{:#?}", query);
+    }
+
+    // send query
+    query.send(&socket, &options.ns)?;
 
     // receive request
-    receive_answer(&socket, options.debug)?;
+    let _received = receive_answer(&socket, options.debug)?;
 
     Ok(())
 }
@@ -72,11 +84,10 @@ fn send_query(
     Ok(())
 }
 
-fn receive_answer(socket: &UdpSocket, debug: bool) -> DNSResult<()> {
+fn receive_answer(socket: &UdpSocket, debug: bool) -> DNSResult<usize> {
     // receive packet from endpoint
     let mut buf = [0; MAX_DNS_PACKET_SIZE];
     let received = socket.recv(&mut buf)?;
-    println!("received={}", received);
 
     // cursor is necessary to use the ToFromNetworkOrder trait
     let mut cursor = Cursor::new(&buf[..received]);
@@ -89,7 +100,7 @@ fn receive_answer(socket: &UdpSocket, debug: bool) -> DNSResult<()> {
         eprintln!("{:#?}", dns_header_response);
         pretty_cursor(&cursor);
     }
-    println!("answer: {}", DisplayWrapper(&dns_header_response));
+    println!("ANSWER: {}", DisplayWrapper(&dns_header_response));
 
     // check return code
     if dns_header_response.flags.response_code != ResponseCode::NoError {
@@ -102,13 +113,14 @@ fn receive_answer(socket: &UdpSocket, debug: bool) -> DNSResult<()> {
         let mut question = DNSQuestion::default();
         for _ in 0..dns_header_response.qd_count {
             question.from_network_bytes(&mut cursor)?;
+            //println!("{:#?}", question);
         }
     }
 
     // display data according to QType
-    for i in 1..=dns_header_response.an_count {
+    for _ in 1..=dns_header_response.an_count {
         display_data(&mut cursor)?;
     }
 
-    Ok(())
+    Ok(received)
 }
