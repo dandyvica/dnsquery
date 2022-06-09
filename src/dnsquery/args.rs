@@ -1,6 +1,9 @@
 //! Manage command line arguments here.
-use clap::{App, Arg};
+use std::fs::OpenOptions;
 use std::str::FromStr;
+
+use clap::{Arg, Command};
+use simplelog::*;
 
 use dnslib::{error::DNSResult, rfc1035::QType};
 
@@ -16,7 +19,7 @@ pub struct CliOptions {
 
 impl CliOptions {
     pub fn options() -> DNSResult<Self> {
-        let matches = App::new("DNS query tool")
+        let matches = Command::new("DNS query tool")
             .version("0.1")
             .author("Alain Viguier dandyvica@gmail.com")
             .about(
@@ -63,7 +66,7 @@ impl CliOptions {
                     .short('o')
                     .long("no-opt")
                     .required(false)
-                    .long_help("Debug mode")
+                    .long_help("Use OPT record")
                     .takes_value(false),
             )
             .get_matches();
@@ -77,6 +80,29 @@ impl CliOptions {
         options.no_opt = matches.is_present("no-opt");
         options.debug = matches.is_present("debug");
 
+        // create logfile only if requested. Logfile is gathering a bunch of information used for debugging
+        if options.debug {
+            init_logger("dnsq.log")?;
+        }
+
         Ok(options)
     }
+}
+
+// Initialize logger: either create it or use it
+fn init_logger(logfile: &str) -> DNSResult<()> {
+    // initialize logger
+    let writable = OpenOptions::new().append(true).open(logfile)?;
+
+    WriteLogger::init(
+        LevelFilter::Trace,
+        simplelog::ConfigBuilder::new()
+            .set_time_format_rfc3339()
+            // .set_time_format_custom(format_description!(
+            //     "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond]"
+            .build(),
+        writable,
+    )?;
+
+    Ok(())
 }

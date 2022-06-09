@@ -10,12 +10,77 @@
 use std::fmt;
 use std::fmt::Debug;
 use std::str;
+use std::net::UdpSocket;
+
+use log::debug;
+use rand::Rng;
 
 use crate::error::{DNSError, DNSResult, InternalError};
 use crate::network_order::ToFromNetworkOrder;
 use crate::util::is_pointer;
+use crate::format_buffer;
 
 use dns_derive::{DnsEnum, DnsStruct};
+
+// DNS packets are called "messages" in RFC1035: 
+// "All communications inside of the domain protocol are carried in a single format called a message"
+#[derive(Debug, DnsStruct)]
+pub struct DNSMessage<'a> {
+    pub header: DNSPacketHeader,
+    pub question: Vec<DNSQuestion<'a>>,
+    pub answer: Option<DNSResourceRecord<'a>>,
+    pub authority: Option<DNSResourceRecord<'a>>,
+    pub additional: Option<DNSResourceRecord<'a>>,
+}
+
+impl<'a> DNSMessage<'a> {
+    // Add another question into the list of questions to send
+    pub fn push_question(&mut self, question: DNSQuestion<'a>) {
+        self.question.push(question);
+
+        // add we add a question, we need to increment the counter
+        self.header.qd_count += 1;
+    }
+
+    // Send the query through the wire
+    pub fn send(&self, socket: &UdpSocket, endpoint: &str) -> DNSResult<()> {
+        // convert to network bytes
+        let mut buffer: Vec<u8> = Vec::new();
+        self.to_network_bytes(&mut buffer)?;
+        debug!("query buffer: {}", format_buffer!("X", &buffer));
+        debug!("query buffer: [{}", format_buffer!("C", &buffer));
+
+        // send packet through the wire
+        let dest = format!("{}:53", endpoint);
+        debug!("destination: {}", dest);
+        socket.send_to(&buffer, dest)?;
+
+        Ok(())
+    }
+}
+
+impl<'a> Default for DNSMessage<'a> {
+    fn default() -> Self {
+        let mut header = DNSPacketHeader::default();
+
+        // create a random ID
+        let mut rng = rand::thread_rng();
+        header.id = rng.gen::<u16>();
+
+        header.flags.packet_type = PacketType::Query;
+        header.flags.op_code = OpCode::Query;
+        header.flags.recursion_desired = true;
+
+        // all others fields are either 0 or false
+        Self {
+            header: header,
+            question: Vec::new(),
+            answer: None,
+            authority: None,
+            additional: None,
+        }
+    }
+}
 
 // DNS packet with data
 #[derive(Debug, Default)]
@@ -549,6 +614,29 @@ impl<'a> DNSQuestion<'a> {
 
         Ok(question)
     }
+}
+
+//------------------------------------------------------------------------
+// Definition of a resource record in the RFC1035
+//------------------------------------------------------------------------
+#[derive(Debug, DnsStruct)]
+pub struct DNSResourceRecord<'a> {
+    pub name: DomainName<'a>, // an owner name, i.e., the name of the node to which this resource record pertains.
+    pub r#type: QType,        // two octets containing one of the RR TYPE codes.
+    pub class: QClass,        // two octets containing one of the RR CLASS codes.
+    pub ttl: u32, //   a bit = 32 signed (actually unsigned) integer that specifies the time interval
+    //   that the resource record may be cached before the source
+    //   of the information should again be consulted.  Zero
+    //   values are interpreted to mean that the RR can only be
+    //   used for the transaction in progress, and should not be
+    //   cached.  For example, SOA records are always distributed
+    //   with a zero TTL to prohibit caching.  Zero values can
+    //   also be used for extremely volatile data.
+    pub rd_length: u16, // an unsigned 16 bit integer that specifies the length in octets of the RDATA field.
+    pub rd_data: Option<Vec<Box<dyn ToFromNetworkOrder<'a>>>>,
+                        //  a variable length string of octets that describes the
+                        //  resource.  The format of this information varies
+                        //  according to the TYPE and CLASS of the resource record.
 }
 
 //------------------------------------------------------------------------

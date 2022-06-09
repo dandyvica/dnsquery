@@ -6,10 +6,9 @@ use std::io::Cursor;
 use dnslib::{
     error::DNSResult,
     network_order::ToFromNetworkOrder,
-    query::DNSQuery,
     rfc1035::{
         DNSPacketFlags, DNSPacketHeader, DNSQuestion, DnsResponse, DomainName, PacketType, QType,
-        A, AAAA, HINFO, MX, NS, SOA, TXT,
+        A, AAAA, HINFO, MX, NS, SOA, TXT, DNSMessage,
     },
 };
 
@@ -109,13 +108,28 @@ impl fmt::Display for DisplayWrapper<'_, DNSQuestion<'_>> {
     }
 }
 
-impl fmt::Display for DisplayWrapper<'_, DNSQuery<'_>> {
+// impl fmt::Display for DisplayWrapper<'_, DNSQuery<'_>> {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         // header first
+//         write!(f, "{} ", DisplayWrapper(&self.0.header))?;
+
+//         // all questions (usually only 1)
+//         for (i, question) in self.0.questions.iter().enumerate() {
+//             write!(f, "question#{}: [{}]", i + 1, DisplayWrapper(question))?;
+//         }
+
+//         // now OPT data for EDNS0
+//         write!(f, "")
+//     }
+// }
+
+impl fmt::Display for DisplayWrapper<'_, DNSMessage<'_>> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // header first
         write!(f, "{} ", DisplayWrapper(&self.0.header))?;
 
         // all questions (usually only 1)
-        for (i, question) in self.0.questions.iter().enumerate() {
+        for (i, question) in self.0.question.iter().enumerate() {
             write!(f, "question#{}: [{}]", i + 1, DisplayWrapper(question))?;
         }
 
@@ -123,6 +137,10 @@ impl fmt::Display for DisplayWrapper<'_, DNSQuery<'_>> {
         write!(f, "")
     }
 }
+
+
+
+
 
 // The global display method
 pub fn display_data<'a>(cursor: &mut Cursor<&'a [u8]>) -> DNSResult<()> {

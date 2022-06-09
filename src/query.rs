@@ -1,9 +1,11 @@
 //! All functions/trait to convert DNS structures to network order back & forth
 use std::net::UdpSocket;
 
+use log::debug;
 use rand::Rng;
 
 use crate::error::DNSResult;
+use crate::format_buffer;
 use crate::network_order::ToFromNetworkOrder;
 use crate::rfc1035::{DNSPacketHeader, DNSQuestion, OpCode, PacketType, OPT};
 use dns_derive::DnsStruct;
@@ -28,7 +30,6 @@ impl<'a> Default for DNSQuery<'a> {
         header.flags.recursion_desired = true;
 
         // all others fields are either 0 or false
-
         Self {
             header: header,
             questions: Vec::new(),
@@ -51,6 +52,8 @@ impl<'a> DNSQuery<'a> {
         // convert to network bytes
         let mut buffer: Vec<u8> = Vec::new();
         self.to_network_bytes(&mut buffer)?;
+        debug!("query buffer: {}", format_buffer!("X", buffer));
+        debug!("query buffer: [{}", format_buffer!("C", buffer));
 
         // send packet through the wire
         let dest = format!("{}:53", endpoint);

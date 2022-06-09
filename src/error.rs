@@ -6,6 +6,7 @@ use std::str;
 pub enum DNSError {
     Io(io::Error),
     Utf8(str::Utf8Error),
+    LoggerError(log::SetLoggerError),
     DNS(String),
     DNSInternalError(InternalError),
 }
@@ -42,5 +43,11 @@ impl From<String> for DNSError {
 impl From<str::Utf8Error> for DNSError {
     fn from(err: str::Utf8Error) -> Self {
         DNSError::Utf8(err)
+    }
+}
+
+impl From<log::SetLoggerError> for DNSError {
+    fn from(err: log::SetLoggerError) -> Self {
+        DNSError::LoggerError(err)
     }
 }

@@ -3,6 +3,30 @@
 use std::char;
 use std::io::Cursor;
 
+// Format a buffer as a string of hex char or chars
+#[macro_export]
+macro_rules! format_buffer {
+    ("X", &$buffer:ident) => {{
+        // just a string of hex chars
+        format!("{:02X?}", $buffer)
+    }};
+    ("C", &$buffer:ident) => {{
+        // just a string of chars
+        let mut s = String::new();
+        for x in &$buffer {
+            // only print out printable chars
+            if x > &21 && x < &128 {
+                // char is always 4 bytes, so need to deal with it
+                let c = char::from_u32(*x as u32).unwrap();
+                s.push_str(&format!("{:<4}", c));
+            } else {
+                s.push_str(&format!("{:<4}", " "));
+            }
+        }
+        s
+    }};
+}
+
 /// A domain name is null terminated or terminated by a pointer as explained in the RFC1035.
 ///
 /// # Example

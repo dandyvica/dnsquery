@@ -8,21 +8,15 @@ edition = "2021"
 [dependencies]
 dns_derive = { path = "dns_derive" }
 byteorder = "1.4.3"
-rand = "0.8.4"
-clap = "3.0.7"
-tokio = { version = "1.16.1", features = ["full"] }
-
-# [build-dependencies]
-# tokio = "1.16.1"
+rand = "0.8.5"
+clap = "3.1.18"
+simplelog = "0.12.0"
+log = "0.4.17"
 
 [lib]
 name = "dnslib"
 path = "src/lib.rs"
 
-# [[bin]]
-# name = "dnswall"
-# path = "src/dnswall/dnswall.rs"
-
 [[bin]]
 name = "dnsquery"
-path = "src/dnsquery/dnsquery.rs"
+path = "src/dnsquery/main.rs"

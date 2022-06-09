@@ -2,19 +2,21 @@
 use std::io::Cursor;
 use std::net::UdpSocket;
 
+use log::debug;
+
 // our DNS library
 use dnslib::{
     error::DNSResult,
     network_order::ToFromNetworkOrder,
-    query::DNSQuery,
     rfc1035::{
-        DNSPacket, DNSPacketHeader, DNSQuestion, QType, ResponseCode, MAX_DNS_PACKET_SIZE, OPT,
+        DNSMessage, DNSPacketHeader, DNSQuestion, ResponseCode, MAX_DNS_PACKET_SIZE, OPT,
     },
     util::pretty_cursor,
+    format_buffer,
 };
 
-mod dnsrequest;
-use dnsrequest::DNSRequest;
+// mod dnsrequest;
+// use dnsrequest::DNSRequest;
 
 mod args;
 use args::CliOptions;
@@ -25,28 +27,24 @@ use display::{display_data, DisplayWrapper};
 fn main() -> DNSResult<()> {
     // manage arguments from command line
     let options = CliOptions::options()?;
-
-    if options.debug {
-        eprintln!("{:#?}", options);
-    }
+    debug!("options: {:?}", &options);
 
     // bind to an ephemeral local port
     let socket = UdpSocket::bind("0.0.0.0:0")?;
+    debug!("socket: {:?}", &socket);
 
     // create the query from command line arguments
-    let mut query = DNSQuery::default();
+    let mut query = DNSMessage::default();
     let question = DNSQuestion::new(&options.domain, options.qtype, None)?;
+    debug!("question to send: {:?}", &question);
     query.push_question(question);
 
     // by default we want OPT
     if !options.no_opt {
-        query.opt = Some(OPT::default());
+        //query.opt = Some(OPT::default());
     }
-
+    debug!("query: {:?}", &query);
     println!("QUERY: {}", DisplayWrapper(&query));
-    if options.debug {
-        eprintln!("{:#?}", query);
-    }
 
     // send query
     query.send(&socket, &options.ns)?;
@@ -57,37 +55,13 @@ fn main() -> DNSResult<()> {
     Ok(())
 }
 
-fn send_query(
-    domain: &str,
-    socket: &UdpSocket,
-    endpoint: &str,
-    qtype: QType,
-    debug: bool,
-) -> DNSResult<()> {
-    // build a new DNS packet
-    let mut dns_packet = DNSPacket::<DNSQuestion>::default();
-    DNSRequest::init_request(domain, &mut dns_packet, qtype)?;
-    if debug {
-        eprintln!("{:#?}", dns_packet);
-    }
-
-    println!("question: {}", DisplayWrapper(&dns_packet.header));
-
-    // convert to network bytes
-    let mut buffer: Vec<u8> = Vec::new();
-    dns_packet.to_network_bytes(&mut buffer)?;
-
-    // send packet through the wire
-    let dest = format!("{}:53", endpoint);
-    socket.send_to(&buffer, dest)?;
-
-    Ok(())
-}
-
 fn receive_answer(socket: &UdpSocket, debug: bool) -> DNSResult<usize> {
     // receive packet from endpoint
     let mut buf = [0; MAX_DNS_PACKET_SIZE];
     let received = socket.recv(&mut buf)?;
+    let slice = &buf[..received];
+    debug!("received buffer: {}", format_buffer!("X", &slice));
+    //debug!("query buffer: [{}", format_buffer!("C", &slice));    
 
     // cursor is necessary to use the ToFromNetworkOrder trait
     let mut cursor = Cursor::new(&buf[..received]);
