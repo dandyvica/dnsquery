@@ -7,12 +7,10 @@ use log::debug;
 // our DNS library
 use dnslib::{
     error::DNSResult,
-    network_order::ToFromNetworkOrder,
-    rfc1035::{
-        DNSMessage, DNSPacketHeader, DNSQuestion, ResponseCode, MAX_DNS_PACKET_SIZE, OPT,
-    },
-    util::pretty_cursor,
     format_buffer,
+    network_order::{FromNetworkOrder},
+    rfc1035::{DNSPacketHeader, DNSQuery, DNSResponse, DNSQuestion, ResponseCode, MAX_DNS_PACKET_SIZE, OPT},
+    util::pretty_cursor,
 };
 
 // mod dnsrequest;
@@ -34,14 +32,16 @@ fn main() -> DNSResult<()> {
     debug!("socket: {:?}", &socket);
 
     // create the query from command line arguments
-    let mut query = DNSMessage::default();
+    let mut query = DNSQuery::default();
     let question = DNSQuestion::new(&options.domain, options.qtype, None)?;
     debug!("question to send: {:?}", &question);
     query.push_question(question);
 
     // by default we want OPT
     if !options.no_opt {
-        //query.opt = Some(OPT::default());
+        // add the OPT pseudo-RR to the additional data
+        let opt = OPT::default();
+        query.additional = Some(vec![Box::new(opt)]);
     }
     debug!("query: {:?}", &query);
     println!("QUERY: {}", DisplayWrapper(&query));
@@ -61,40 +61,26 @@ fn receive_answer(socket: &UdpSocket, debug: bool) -> DNSResult<usize> {
     let received = socket.recv(&mut buf)?;
     let slice = &buf[..received];
     debug!("received buffer: {}", format_buffer!("X", &slice));
-    //debug!("query buffer: [{}", format_buffer!("C", &slice));    
+    debug!("received buffer: [{}", format_buffer!("C", &slice));
 
     // cursor is necessary to use the ToFromNetworkOrder trait
     let mut cursor = Cursor::new(&buf[..received]);
 
-    // get the DNS header
-    let mut dns_header_response = DNSPacketHeader::default();
-    dns_header_response.from_network_bytes(&mut cursor)?;
+    // get response
+    let mut dns_response = DNSResponse::default();
+    dns_response.from_network_bytes(&mut cursor)?;    
 
-    if debug {
-        eprintln!("{:#?}", dns_header_response);
-        pretty_cursor(&cursor);
-    }
-    println!("ANSWER: {}", DisplayWrapper(&dns_header_response));
+    debug!("response header: {:?}", dns_response.header);
+    debug!("response: {:?}", &dns_response);
+
+    println!("ANSWER: {}", DisplayWrapper(&dns_response.header));
 
     // check return code
-    if dns_header_response.flags.response_code != ResponseCode::NoError {
+    if dns_response.header.flags.response_code != ResponseCode::NoError {
         eprintln!("Response error!");
         std::process::exit(1);
     }
 
-    // if question is still in the response, skip it
-    if dns_header_response.qd_count >= 1 {
-        let mut question = DNSQuestion::default();
-        for _ in 0..dns_header_response.qd_count {
-            question.from_network_bytes(&mut cursor)?;
-            //println!("{:#?}", question);
-        }
-    }
-
-    // display data according to QType
-    for _ in 1..=dns_header_response.an_count {
-        display_data(&mut cursor)?;
-    }
 
     Ok(received)
 }

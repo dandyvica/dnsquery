@@ -33,8 +33,8 @@ impl CliOptions {
                 Arg::new("qtype")
                     .short('q')
                     .long("qtype")
-                    .required(true)
-                    .long_help("QType value")
+                    .long_help("Resource record type to query")
+                    .value_name("TYPE")
                     .takes_value(true),
             )
             .arg(
@@ -42,7 +42,8 @@ impl CliOptions {
                     .short('n')
                     .long("ns")
                     .required(true)
-                    .long_help("DNS server to address")
+                    .long_help("Name server to address")
+                    .value_name("NAMESERVER")
                     .takes_value(true),
             )
             .arg(
@@ -51,6 +52,7 @@ impl CliOptions {
                     .long("domain")
                     .required(true)
                     .long_help("Domain to query")
+                    .value_name("DOMAIN")
                     .takes_value(true),
             )
             .arg(
@@ -75,9 +77,20 @@ impl CliOptions {
         let mut options = CliOptions::default();
 
         options.ns = String::from(matches.value_of("ns").unwrap());
+
+        // domain is required
         options.domain = String::from(matches.value_of("domain").unwrap());
-        options.qtype = QType::from_str(&matches.value_of("qtype").unwrap().to_uppercase())?;
+
+        // if QType is not present, defaults to A
+        if matches.is_present("qtype") {
+            options.qtype = QType::from_str(&matches.value_of("qtype").unwrap().to_uppercase())?;
+        } else {
+            options.qtype = QType::A;
+        }
+
         options.no_opt = matches.is_present("no-opt");
+
+        // set debug for logging
         options.debug = matches.is_present("debug");
 
         // create logfile only if requested. Logfile is gathering a bunch of information used for debugging
@@ -92,7 +105,7 @@ impl CliOptions {
 // Initialize logger: either create it or use it
 fn init_logger(logfile: &str) -> DNSResult<()> {
     // initialize logger
-    let writable = OpenOptions::new().append(true).open(logfile)?;
+    let writable = OpenOptions::new().create(true).append(true).open(logfile)?;
 
     WriteLogger::init(
         LevelFilter::Trace,

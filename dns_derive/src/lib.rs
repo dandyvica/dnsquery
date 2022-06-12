@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use syn::{parse_macro_input, DeriveInput};
 
 mod dns_struct;
-use dns_struct::dns_derive;
+use dns_struct::{dns_from_network, dns_to_network};
 
 mod dns_enum;
 use dns_enum::dns_enum;
@@ -19,13 +19,23 @@ pub fn get_derive_input(s: &str) -> DeriveInput {
 }
 
 // Auto-implement the ToNetworkBytes trait for a structure
-#[proc_macro_derive(DnsStruct)]
-pub fn dns_macro_length(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(DnsToNetwork)]
+pub fn dns_to(input: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
     let ast = parse_macro_input!(input as DeriveInput);
 
     // inject code
-    proc_macro::TokenStream::from(dns_derive(&ast))
+    proc_macro::TokenStream::from(dns_to_network(&ast))
+}
+
+// Auto-implement the ToNetworkBytes trait for a structure
+#[proc_macro_derive(DnsFromNetwork)]
+pub fn dns_from(input: TokenStream) -> TokenStream {
+    // Parse the input tokens into a syntax tree
+    let ast = parse_macro_input!(input as DeriveInput);
+
+    // inject code
+    proc_macro::TokenStream::from(dns_from_network(&ast))
 }
 
 // Auto-implement the Default, TryFrom<u8>, TryFrom<u16> and FromStr for enums

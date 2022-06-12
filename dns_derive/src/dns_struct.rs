@@ -73,7 +73,7 @@ fn get_where_clause(visitor: &ExprVisitor) -> Option<proc_macro2::TokenStream> {
 
 // Build the impl for  the ToFromNetworkOrder trait code depending on whether the struct has a lifetime, a generic
 // type
-fn get_impl(derive_input: &DeriveInput) -> proc_macro2::TokenStream {
+fn get_impl_to(derive_input: &DeriveInput) -> proc_macro2::TokenStream {
     // get ident from input
     let ident = &derive_input.ident;
 
@@ -89,23 +89,62 @@ fn get_impl(derive_input: &DeriveInput) -> proc_macro2::TokenStream {
     if visitor.is_lifetime && visitor.is_generic {
         let where_bound = where_clause.unwrap();
         quote! {
-            impl<'a, T> ToFromNetworkOrder<'a> for #ident<'a, T> #where_bound
+            impl<'a, T> ToNetworkOrder for #ident<'a, T> #where_bound
         }
     // only a lifetime
     } else if visitor.is_lifetime {
         quote! {
-            impl<'a> ToFromNetworkOrder<'a> for #ident<'a>
+            impl<'a> ToNetworkOrder for #ident<'a>
         }
     // only a generic type
     } else if visitor.is_generic {
         let where_bound = where_clause.unwrap();
         quote! {
-            impl<'a, T> ToFromNetworkOrder<'a> for #ident<T> #where_bound
+            impl<T> ToNetworkOrder for #ident<T> #where_bound
         }
     // neither a lifetime nor a generic
     } else {
         quote! {
-            impl<'a> ToFromNetworkOrder<'a> for #ident
+            impl ToNetworkOrder for #ident
+        }
+    }
+}
+
+// Build the impl for  the ToFromNetworkOrder trait code depending on whether the struct has a lifetime, a generic
+// type
+fn get_impl_from(derive_input: &DeriveInput) -> proc_macro2::TokenStream {
+    // get ident from input
+    let ident = &derive_input.ident;
+
+    // visit AST to check whether the structure has a lifetime, a generic type or both
+    // The ExprVisitor structure will also get trait bounds
+    let mut visitor = ExprVisitor::default();
+    visitor.visit_derive_input(&derive_input);
+
+    // build where clause if any
+    let where_clause = get_where_clause(&visitor);
+
+    // both a lifetime and a generic
+    if visitor.is_lifetime && visitor.is_generic {
+        let where_bound = where_clause.unwrap();
+        quote! {
+            impl<'a, T> FromNetworkOrder<'a> for #ident<'a, T> #where_bound
+        }
+    // only a lifetime
+    } else if visitor.is_lifetime {
+        quote! {
+            impl<'a> FromNetworkOrder<'a> for #ident<'a>
+        }
+    // only a generic type
+    } else if visitor.is_generic {
+        let where_bound = where_clause.unwrap();
+        quote! {
+            impl<'a, T> FromNetworkOrder<'a> for #ident<T> #where_bound
+        }
+    // neither a lifetime nor a generic
+    } else {
+        quote! {
+            impl<'a> FromNetworkOrder<'a> for #ident
         }
     }
 }
@@ -120,13 +159,13 @@ pub(crate) fn get_struct(ast: &DeriveInput) -> &DataStruct {
     }
 }
 
-// create the impl methods for trait ToFromNetworkOrder
-pub fn dns_derive(ast: &DeriveInput) -> proc_macro2::TokenStream {
+// create the impl methods for trait ToNetworkOrder
+pub fn dns_to_network(ast: &DeriveInput) -> proc_macro2::TokenStream {
     // get struct data or panic
     let struct_token = get_struct(&ast);
 
     // build impl clause
-    let impl_clause = get_impl(&ast);
+    let impl_clause = get_impl_to(&ast);
 
     // call to_network_bytes() call for each field
     let to_method_calls = struct_token.fields.iter().map(|f| {
@@ -135,17 +174,7 @@ pub fn dns_derive(ast: &DeriveInput) -> proc_macro2::TokenStream {
         let field_name = f.ident.as_ref().unwrap();
 
         quote! {
-            length += ToFromNetworkOrder::to_network_bytes(&self.#field_name, buffer)?;
-        }
-    });
-
-    // call from_network_bytes() call for each field
-    let from_method_calls = struct_token.fields.iter().map(|f| {
-        // get name of the field as TokenStream
-        let field_name = f.ident.as_ref().unwrap();
-
-        quote! {
-            ToFromNetworkOrder::from_network_bytes(&mut self.#field_name, buffer)?;
+            length += ToNetworkOrder::to_network_bytes(&self.#field_name, buffer)?;
         }
     });
 
@@ -157,7 +186,36 @@ pub fn dns_derive(ast: &DeriveInput) -> proc_macro2::TokenStream {
                 #( #to_method_calls)*
                 Ok(length)
             }
+        }
+    };
 
+    new_code
+
+    // Hand the output tokens back to the compiler
+    //TokenStream::from(new_code)
+}
+
+// create the impl methods for trait ToFromNetworkOrder
+pub fn dns_from_network(ast: &DeriveInput) -> proc_macro2::TokenStream {
+    // get struct data or panic
+    let struct_token = get_struct(&ast);
+
+    // build impl clause
+    let impl_clause = get_impl_from(&ast);
+
+    // call from_network_bytes() call for each field
+    let from_method_calls = struct_token.fields.iter().map(|f| {
+        // get name of the field as TokenStream
+        let field_name = f.ident.as_ref().unwrap();
+
+        quote! {
+            FromNetworkOrder::from_network_bytes(&mut self.#field_name, buffer)?;
+        }
+    });
+
+    // return code to the compiler
+    let new_code = quote! {
+        #impl_clause {
             fn from_network_bytes(&mut self, buffer: &mut std::io::Cursor<&'a [u8]>) -> DNSResult<()> {
                 #( #from_method_calls)*
                 Ok(())
@@ -391,7 +449,7 @@ mod tests {
     fn build_impl() {
         // S1
         let input = get_derive_input(S1);
-        let new_code = dns_derive(&input).to_string();
+        let new_code = dns_to_network(&input).to_string();
         assert!(new_code.contains("self . x"));
         assert!(new_code.contains("self . y"));
         assert!(new_code.contains("self . z"));

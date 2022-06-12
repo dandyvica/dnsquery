@@ -1,13 +1,13 @@
 //! All functions/trait to convert DNS structures to network order back & forth
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use std::io::{Cursor, Result};
+use std::io::{Cursor, Result, Seek, SeekFrom};
 
 use crate::error::DNSResult;
-use crate::network_order::ToFromNetworkOrder;
+use crate::network_order::{FromNetworkOrder, ToNetworkOrder};
 
-impl<'a> ToFromNetworkOrder<'a> for u8 {
+impl ToNetworkOrder for u8 {
     /// ```
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::ToNetworkOrder;
     ///
     /// let mut buffer: Vec<u8> = Vec::new();
     /// assert!(255_u8.to_network_bytes(&mut buffer).is_ok());
@@ -17,10 +17,12 @@ impl<'a> ToFromNetworkOrder<'a> for u8 {
         buffer.write_u8(*self)?;
         Ok(1)
     }
+}
 
+impl<'a> FromNetworkOrder<'a> for u8 {
     /// ```
     /// use std::io::Cursor;
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::FromNetworkOrder;
     ///
     /// let b = vec![0xFF];
     /// let mut buffer = Cursor::new(b.as_slice());
@@ -34,9 +36,9 @@ impl<'a> ToFromNetworkOrder<'a> for u8 {
     }
 }
 
-impl<'a> ToFromNetworkOrder<'a> for u16 {
+impl ToNetworkOrder for u16 {
     /// ```
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::ToNetworkOrder;
     ///
     /// let mut buffer: Vec<u8> = Vec::new();
     /// assert!(0x1234_u16.to_network_bytes(&mut buffer).is_ok());
@@ -46,10 +48,12 @@ impl<'a> ToFromNetworkOrder<'a> for u16 {
         buffer.write_u16::<BigEndian>(*self)?;
         Ok(2)
     }
+}
 
+impl<'a> FromNetworkOrder<'a> for u16 {
     /// ```
     /// use std::io::Cursor;
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::FromNetworkOrder;
     ///
     /// let b = vec![0x12, 0x34];
     /// let mut buffer = Cursor::new(b.as_slice());
@@ -63,9 +67,9 @@ impl<'a> ToFromNetworkOrder<'a> for u16 {
     }
 }
 
-impl<'a> ToFromNetworkOrder<'a> for u32 {
+impl ToNetworkOrder for u32 {
     /// ```
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::ToNetworkOrder;
     ///
     /// let mut buffer: Vec<u8> = Vec::new();
     /// assert!(0x12345678_u32.to_network_bytes(&mut buffer).is_ok());
@@ -75,9 +79,12 @@ impl<'a> ToFromNetworkOrder<'a> for u32 {
         buffer.write_u32::<BigEndian>(*self)?;
         Ok(4)
     }
+}
+
+impl<'a> FromNetworkOrder<'a> for u32 {
     /// ```
     /// use std::io::Cursor;
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::FromNetworkOrder;
     ///
     /// let b = vec![0x12, 0x34, 0x56, 0x78];
     /// let mut buffer = Cursor::new(b.as_slice());
@@ -91,9 +98,9 @@ impl<'a> ToFromNetworkOrder<'a> for u32 {
     }
 }
 
-impl<'a> ToFromNetworkOrder<'a> for i32 {
+impl ToNetworkOrder for i32 {
     /// ```
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::ToNetworkOrder;
     ///
     /// let mut buffer: Vec<u8> = Vec::new();
     /// assert!(0x12345678_i32.to_network_bytes(&mut buffer).is_ok());
@@ -103,10 +110,12 @@ impl<'a> ToFromNetworkOrder<'a> for i32 {
         buffer.write_i32::<BigEndian>(*self)?;
         Ok(2)
     }
+}
 
+impl<'a> FromNetworkOrder<'a> for i32 {
     /// ```
     /// use std::io::Cursor;
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::FromNetworkOrder;
     ///
     /// let b = vec![0x12, 0x34, 0x56, 0x78];
     /// let mut buffer = Cursor::new(b.as_slice());
@@ -120,9 +129,9 @@ impl<'a> ToFromNetworkOrder<'a> for i32 {
     }
 }
 
-impl<'a> ToFromNetworkOrder<'a> for &[u8] {
+impl ToNetworkOrder for &[u8] {
     /// ```
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::ToNetworkOrder;
     ///
     /// let mut buffer: Vec<u8> = Vec::new();
     /// assert!(&[0x12_u8, 0x34, 0x56, 0x78].to_network_bytes(&mut buffer).is_ok());
@@ -132,16 +141,18 @@ impl<'a> ToFromNetworkOrder<'a> for &[u8] {
         buffer.append(&mut self.to_vec());
         Ok(self.len())
     }
+}
 
+impl<'a> FromNetworkOrder<'a> for &[u8] {
     fn from_network_bytes(&mut self, _v: &mut Cursor<&[u8]>) -> DNSResult<()> {
         unimplemented!("&[u8].from_network_bytes()");
         //Ok(())
     }
 }
 
-impl<'a> ToFromNetworkOrder<'a> for &'a str {
+impl<'a> ToNetworkOrder for &'a str {
     /// ```
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::ToNetworkOrder;
     ///
     /// let mut buffer: Vec<u8> = Vec::new();
     /// assert!(&[0x12_u8, 0x34, 0x56, 0x78].to_network_bytes(&mut buffer).is_ok());
@@ -151,16 +162,44 @@ impl<'a> ToFromNetworkOrder<'a> for &'a str {
         buffer.append(&mut self.as_bytes().to_vec());
         Ok(self.len())
     }
+}
 
+impl<'a> FromNetworkOrder<'a> for &'a str {
     fn from_network_bytes(&mut self, _v: &mut Cursor<&[u8]>) -> DNSResult<()> {
         unimplemented!("&str.from_network_bytes()");
         //Ok(())
     }
 }
 
-impl<'a, T: ToFromNetworkOrder<'a>> ToFromNetworkOrder<'a> for Option<T> {
+impl ToNetworkOrder for String {
+    fn to_network_bytes(&self, _: &mut Vec<u8>) -> Result<usize> {
+        Ok(0)
+    }
+}
+
+impl<'a> FromNetworkOrder<'a> for String {
+    fn from_network_bytes(&mut self, buffer: &mut Cursor<&[u8]>) -> DNSResult<()> {
+        // get a reference on [u8]
+        let position = buffer.position() as usize;
+        let inner_data = buffer.get_ref();
+
+        // first char is the string length
+        let length = inner_data[position] as u8;
+
+        // move the cursor forward
+        buffer.seek(SeekFrom::Current(length as i64))?;
+
+        // save data
+        self.push_str(std::str::from_utf8(
+            &buffer.get_ref()[position + 1..position + length as usize + 1],
+        )?);
+        Ok(())
+    }
+}
+
+impl<T: ToNetworkOrder> ToNetworkOrder for Option<T> {
     /// ```
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::ToNetworkOrder;
     ///
     /// let mut buffer: Vec<u8> = Vec::new();
     /// assert_eq!(Some(0xFF_u8).to_network_bytes(&mut buffer).unwrap(), 1);
@@ -178,10 +217,12 @@ impl<'a, T: ToFromNetworkOrder<'a>> ToFromNetworkOrder<'a> for Option<T> {
             self.as_ref().unwrap().to_network_bytes(buffer)
         }
     }
+}
 
+impl<'a, T: FromNetworkOrder<'a>> FromNetworkOrder<'a> for Option<T> {
     /// ```
     /// use std::io::Cursor;
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::FromNetworkOrder;
     ///
     /// let b = vec![0x12, 0x34, 0x56, 0x78];
     /// let mut buffer = Cursor::new(b.as_slice());
@@ -204,9 +245,9 @@ impl<'a, T: ToFromNetworkOrder<'a>> ToFromNetworkOrder<'a> for Option<T> {
     }
 }
 
-impl<'a, T: ToFromNetworkOrder<'a>, const N: usize> ToFromNetworkOrder<'a> for [T; N] {
+impl<T: ToNetworkOrder, const N: usize> ToNetworkOrder for [T; N] {
     /// ```
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::ToNetworkOrder;
     ///
     /// let mut buffer: Vec<u8> = Vec::new();
     /// assert_eq!([0xFFFF_u16; 10].to_network_bytes(&mut buffer).unwrap(), 20);
@@ -225,10 +266,12 @@ impl<'a, T: ToFromNetworkOrder<'a>, const N: usize> ToFromNetworkOrder<'a> for [
         //v.append(&mut self.to_vec());
         Ok(length)
     }
+}
 
+impl<'a, T: FromNetworkOrder<'a>, const N: usize> FromNetworkOrder<'a> for [T; N] {
     /// ```
     /// use std::io::Cursor;
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::FromNetworkOrder;
     ///
     /// let b = vec![0x12, 0x34, 0x56, 0x78];
     /// let mut buffer = Cursor::new(b.as_slice());
@@ -250,12 +293,12 @@ impl<'a, T: ToFromNetworkOrder<'a>, const N: usize> ToFromNetworkOrder<'a> for [
     }
 }
 
-impl<'a, T> ToFromNetworkOrder<'a> for Vec<T>
+impl<T> ToNetworkOrder for Vec<T>
 where
-    T: Default + ToFromNetworkOrder<'a>,
+    T: Default + ToNetworkOrder,
 {
     /// ```
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::ToNetworkOrder;
     ///
     /// let mut buffer: Vec<u8> = Vec::new();
     /// let v = vec![[0xFFFF_u16;3],[0xFFFF;3],[0xFFFF;3]];
@@ -272,10 +315,15 @@ where
 
         Ok(length)
     }
+}
 
+impl<'a, T> FromNetworkOrder<'a> for Vec<T>
+where
+    T: Default + FromNetworkOrder<'a>,
+{
     /// ```
     /// use std::io::Cursor;
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::FromNetworkOrder;
     ///
     /// let b = vec![0x12, 0x34, 0x56, 0x78];
     /// let mut buffer = Cursor::new(b.as_slice());
@@ -295,12 +343,12 @@ where
     }
 }
 
-impl<'a> ToFromNetworkOrder<'a> for Vec<Box<dyn ToFromNetworkOrder<'a>>> {
+impl ToNetworkOrder for Vec<Box<dyn ToNetworkOrder>> {
     /// ```
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::ToNetworkOrder;
     ///
     /// let mut buffer: Vec<u8> = Vec::new();
-    /// let v: Vec<Box<dyn ToFromNetworkOrder>> = vec![Box::new(0xFFu8), Box::new(0x1234u16), Box::new(0x12345678u32)];
+    /// let v: Vec<Box<dyn ToNetworkOrder>> = vec![Box::new(0xFFu8), Box::new(0x1234u16), Box::new(0x12345678u32)];
     /// assert_eq!(v.to_network_bytes(&mut buffer).unwrap(), 7);
     /// //assert_eq!(&buffer, &[0xFF; 18]);
     /// ```    
@@ -314,18 +362,22 @@ impl<'a> ToFromNetworkOrder<'a> for Vec<Box<dyn ToFromNetworkOrder<'a>>> {
 
         Ok(length)
     }
+}
 
+impl<'a> FromNetworkOrder<'a> for Vec<Box<dyn FromNetworkOrder<'a>>> {
     fn from_network_bytes(&mut self, _buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
         unimplemented!("Vec<Box<dyn ToFromNetworkOrder<'a>>>.from_network_bytes()");
         //Ok(())
     }
 }
 
-impl<'a, T> ToFromNetworkOrder<'a> for std::marker::PhantomData<&'a T> {
+impl<'a, T> ToNetworkOrder for std::marker::PhantomData<&'a T> {
     fn to_network_bytes(&self, _buffer: &mut Vec<u8>) -> Result<usize> {
         Ok(0)
     }
+}
 
+impl<'a, T> FromNetworkOrder<'a> for std::marker::PhantomData<&'a T> {
     fn from_network_bytes(&mut self, _buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
         Ok(())
     }

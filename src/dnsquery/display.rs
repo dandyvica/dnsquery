@@ -5,10 +5,10 @@ use std::io::Cursor;
 
 use dnslib::{
     error::DNSResult,
-    network_order::ToFromNetworkOrder,
+    network_order::FromNetworkOrder,
     rfc1035::{
-        DNSPacketFlags, DNSPacketHeader, DNSQuestion, DnsResponse, DomainName, PacketType, QType,
-        A, AAAA, HINFO, MX, NS, SOA, TXT, DNSMessage,
+        DNSPacketFlags, DNSPacketHeader, DNSQuery, DNSQuestion, DomainName, PacketType, QType, A,
+        AAAA, HINFO, MX, NS, SOA, TXT,
     },
 };
 
@@ -25,13 +25,13 @@ macro_rules! rr_display {
 pub struct DisplayWrapper<'a, T>(pub &'a T);
 
 // Now we can implement the Display trait for DisplayWrapper for all structure we want to display
-impl fmt::Display for DisplayWrapper<'_, DomainName<'_>> {
+impl fmt::Display for DisplayWrapper<'_, DomainName> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl fmt::Display for DisplayWrapper<'_, SOA<'_>> {
+impl fmt::Display for DisplayWrapper<'_, SOA> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -47,7 +47,7 @@ impl fmt::Display for DisplayWrapper<'_, SOA<'_>> {
     }
 }
 
-impl fmt::Display for DisplayWrapper<'_, MX<'_>> {
+impl fmt::Display for DisplayWrapper<'_, MX> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -98,7 +98,7 @@ impl fmt::Display for DisplayWrapper<'_, DNSPacketFlags> {
     }
 }
 
-impl fmt::Display for DisplayWrapper<'_, DNSQuestion<'_>> {
+impl fmt::Display for DisplayWrapper<'_, DNSQuestion> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -123,7 +123,7 @@ impl fmt::Display for DisplayWrapper<'_, DNSQuestion<'_>> {
 //     }
 // }
 
-impl fmt::Display for DisplayWrapper<'_, DNSMessage<'_>> {
+impl fmt::Display for DisplayWrapper<'_, DNSQuery> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // header first
         write!(f, "{} ", DisplayWrapper(&self.0.header))?;
@@ -138,14 +138,10 @@ impl fmt::Display for DisplayWrapper<'_, DNSMessage<'_>> {
     }
 }
 
-
-
-
-
 // The global display method
 pub fn display_data<'a>(cursor: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
     // receive data
-    let mut response = DnsResponse::default();
+    let mut response = DNSQuestion::default();
     response.from_network_bytes(cursor)?;
     //println!("{:#?}", response);
 

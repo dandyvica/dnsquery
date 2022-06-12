@@ -1,97 +1,16 @@
 //! All functions/trait to convert DNS structures to network order back & forth
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use std::io::{Cursor, Result, Seek, SeekFrom};
-use std::str;
+use std::io::{Cursor, Result};
 
 use crate::derive_enum;
 use crate::error::{DNSError, DNSResult};
-use crate::network_order::ToFromNetworkOrder;
-use crate::rfc1035::{
-    CharacterString, DNSPacket, DNSPacketFlags, DomainName, LabelType, OpCode, PacketType, QClass,
-    QType, ResponseCode,
-};
+use crate::network_order::{FromNetworkOrder, ToNetworkOrder};
+use crate::rfc1035::{DNSPacketFlags, DomainName, OpCode, PacketType, QClass, QType, ResponseCode};
 
-impl<'a> ToFromNetworkOrder<'a> for CharacterString<'a> {
-    /// ```
-    /// use dnslib::rfc1035::{CharacterString, LabelType};
-    /// use dnslib::network_order::ToFromNetworkOrder;
-    ///
-    /// let cs = CharacterString::from("www");
-    /// let mut buffer: Vec<u8> = Vec::new();
-    ///
-    /// assert_eq!(cs.to_network_bytes(&mut buffer).unwrap(), 4);
-    /// assert_eq!(&buffer, &[0x03, 0x77, 0x77, 0x77]);
-    /// ```  
-    fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
-        buffer.write_u8(self.length)?;
-        self.data.to_network_bytes(buffer)?;
-
-        Ok(self.length as usize + 1)
-    }
-
-    /// ```
-    /// use std::io::Cursor;
-    /// use dnslib::network_order::ToFromNetworkOrder;
-    /// use dnslib::rfc1035::CharacterString;
-    ///
-    /// let mut buffer = Cursor::new([0x06_u8, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65].as_slice());
-    /// let mut cs = CharacterString::default();
-    /// assert!(cs.from_network_bytes(&mut buffer).is_ok());
-    /// assert_eq!(cs.length, 6u8);
-    /// assert_eq!(cs.data, "google");
-    /// ```    
-    fn from_network_bytes(&mut self, buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
-        // get a reference on [u8]
-        let position = buffer.position() as usize;
-        let inner_data = buffer.get_ref();
-
-        // first char is the string length
-        self.length = inner_data[position] as u8;
-
-        // move the cursor forward
-        buffer.seek(SeekFrom::Current(self.length as i64))?;
-
-        // save data
-        self.data =
-            str::from_utf8(&buffer.get_ref()[position + 1..position + self.length as usize + 1])?;
-        Ok(())
-    }
-}
-
-impl<'a> ToFromNetworkOrder<'a> for LabelType<'a> {
-    /// ```
-    /// use dnslib::rfc1035::{CharacterString, LabelType};
-    /// use dnslib::network_order::ToFromNetworkOrder;
-    ///
-    /// let dt = LabelType::Label(CharacterString::from("www"));
-    /// let mut buffer: Vec<u8> = Vec::new();
-    ///
-    /// assert_eq!(dt.to_network_bytes(&mut buffer).unwrap(), 4);
-    /// assert_eq!(&buffer, &[0x03, 0x77, 0x77, 0x77]);
-    /// ```    
-    fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
-        match self {
-            LabelType::Label(label) => {
-                let length = label.to_network_bytes(buffer)?;
-                Ok(length)
-            }
-            LabelType::Root => {
-                buffer.write_u8(0u8)?;
-                Ok(1)
-            }
-        }
-    }
-
-    fn from_network_bytes(&mut self, _buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
-        unimplemented!("LabelType<'a>.from_network_bytes()");
-        //Ok(())
-    }
-}
-
-impl<'a> ToFromNetworkOrder<'a> for DomainName<'a> {
+impl ToNetworkOrder for DomainName {
     /// ```
     /// use dnslib::rfc1035::DomainName;
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::ToNetworkOrder;
     ///
     /// let dn = DomainName::try_from("www.google.ie").unwrap();
     /// let mut buffer: Vec<u8> = Vec::new();
@@ -103,29 +22,29 @@ impl<'a> ToFromNetworkOrder<'a> for DomainName<'a> {
         let mut length = 0usize;
 
         for label in &self.labels {
-            // write label
-            length += label.to_network_bytes(buffer)?;
+            // write label: length first, and then chars
+            length += (label.len() as u8).to_network_bytes(buffer)?;
+            length += label.as_str().to_network_bytes(buffer)?;
         }
+
+        // trailing 0 means end of domain name
+        length += 0_u8.to_network_bytes(buffer)?;
         Ok(length)
     }
+}
 
+impl<'a> FromNetworkOrder<'a> for DomainName {
     /// ```
     /// use std::io::Cursor;
-    /// use dnslib::network_order::ToFromNetworkOrder;
-    /// use dnslib::rfc1035::{DomainName, LabelType, CharacterString};
+    /// use dnslib::network_order::FromNetworkOrder;
+    /// use dnslib::rfc1035::DomainName;
     ///
     /// // with sentinel = 0
     /// let mut buffer = Cursor::new([0x03_u8, 0x77, 0x77, 0x77, 0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x02, 0x69, 0x65, 0x00].as_slice());
     /// let mut dn = DomainName::default();
     /// assert!(dn.from_network_bytes(&mut buffer).is_ok());
-    /// assert_eq!(dn.labels.len(), 4);
-    /// assert_eq!(dn.labels,
-    /// &[
-    ///     LabelType::Label(CharacterString::from("www")),
-    ///     LabelType::Label(CharacterString::from("google")),
-    ///     LabelType::Label(CharacterString::from("ie")),
-    ///     LabelType::Root
-    /// ]);
+    /// assert_eq!(dn.labels.len(), 3);
+    /// assert_eq!(dn.labels, &["www", "google", "ie"]);
     /// ```    
     fn from_network_bytes(&mut self, buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
         //dbg!("============================");
@@ -152,9 +71,9 @@ derive_enum!(QType, u16);
 derive_enum!(QClass, u16);
 derive_enum!(PacketType, u16);
 
-impl<'a> ToFromNetworkOrder<'a> for DNSPacketFlags {
+impl ToNetworkOrder for DNSPacketFlags {
     /// ```
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::ToNetworkOrder;
     /// use dnslib::rfc1035::{DNSPacketFlags, ResponseCode, OpCode, PacketType};
     ///
     /// let flags = DNSPacketFlags {
@@ -197,10 +116,12 @@ impl<'a> ToFromNetworkOrder<'a> for DNSPacketFlags {
         buffer.write_u16::<BigEndian>(flags)?;
         Ok(2)
     }
+}
 
+impl<'a> FromNetworkOrder<'a> for DNSPacketFlags {
     /// ```
     /// use std::io::Cursor;
-    /// use dnslib::network_order::ToFromNetworkOrder;
+    /// use dnslib::network_order::FromNetworkOrder;
     /// use dnslib::rfc1035::{DNSPacketFlags, ResponseCode, OpCode, PacketType};
     ///
     /// let b = vec![0b1000_1111, 0b1111_0000];
@@ -252,23 +173,6 @@ impl<'a> ToFromNetworkOrder<'a> for DNSPacketFlags {
         self.checking_disabled = (flags >> 4 & 1) == 1;
         self.response_code = ResponseCode::try_from(flags & 0b1111)?;
 
-        Ok(())
-    }
-}
-
-impl<'a, T> ToFromNetworkOrder<'a> for DNSPacket<T>
-where
-    T: ToFromNetworkOrder<'a>,
-{
-    fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
-        let mut length = self.header.to_network_bytes(buffer)?;
-        length += self.data.to_network_bytes(buffer)?;
-        Ok(length)
-    }
-
-    fn from_network_bytes(&mut self, buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
-        self.header.from_network_bytes(buffer)?;
-        self.data.from_network_bytes(buffer)?;
         Ok(())
     }
 }

@@ -13,7 +13,7 @@ macro_rules! format_buffer {
     ("C", &$buffer:ident) => {{
         // just a string of chars
         let mut s = String::new();
-        for x in &$buffer {
+        for x in $buffer.iter() {
             // only print out printable chars
             if x > &21 && x < &128 {
                 // char is always 4 bytes, so need to deal with it
