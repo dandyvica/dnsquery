@@ -9,9 +9,9 @@
 //!         move DnsResponse to response.rs
 use std::fmt;
 use std::fmt::Debug;
+use std::io::Cursor;
 use std::net::UdpSocket;
 use std::str;
-use std::io::{Cursor};
 
 use log::debug;
 use rand::Rng;
@@ -86,7 +86,7 @@ impl Default for DNSQuery {
 #[derive(Debug, Default)]
 pub struct DNSResponse {
     pub header: DNSPacketHeader,
-    pub question: Vec<DNSQuestion>,
+    pub question: DNSQuestion,
     pub answer: Vec<DNSResourceRecord>,
     pub authority: Option<Vec<DNSResourceRecord>>,
     pub additional: Option<Vec<DNSResourceRecord>>,
@@ -95,25 +95,34 @@ pub struct DNSResponse {
 impl<'a> FromNetworkOrder<'a> for DNSResponse {
     fn from_network_bytes(&mut self, buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
         self.header.from_network_bytes(buffer)?;
+        debug!(
+            "DNSResponse::from_network_bytes() header: {:#?}",
+            self.header
+        );
+
+        debug!("{:02X?}", buffer);
+        debug!("position={}", buffer.position());
+
+        debug!("before question");
         self.question.from_network_bytes(buffer)?;
+        debug!("after question");
 
         // handle answers
-        for _ in 0..self.header.an_count {
+        debug!("self.header.an_count={}", self.header.an_count);
+        //0panic!();
+        for i in 0..self.header.an_count {
+            debug!("i={}", i);
             let mut rr = DNSResourceRecord::default();
             rr.from_network_bytes(buffer)?;
+            debug!("after rr.from_network_bytes()");
 
             self.answer.push(rr);
         }
-
 
         // if a pointer, get pointer value and call
         Ok(())
     }
 }
-
-
-
-
 
 pub const MAX_DNS_PACKET_SIZE: usize = 512;
 
@@ -409,14 +418,15 @@ impl DomainName {
     pub fn from_position(&mut self, pos: usize, buffer: &&[u8]) -> DNSResult<usize> {
         let mut index = pos;
 
-        // println!(
-        //     "starting at position: {} with value: {:X?} ({})",
-        //     index, buffer[index], buffer[index]
-        // );
+        println!(
+            "from_position(): starting at position: {} with value: {:X?} ({})",
+            index, buffer[index], buffer[index]
+        );
 
         loop {
             // we reach the sentinel
             if buffer[index] == 0 {
+                println!("from_position(): found sentinel");
                 break;
             }
 
@@ -458,7 +468,10 @@ impl DomainName {
             // then we convert the label into UTF8
             let label = &buffer[index + 1..index + size + 1];
             let label_as_utf8 = String::from_utf8(label.to_vec())?;
-            //println!("ss={}", ss);
+            println!(
+                "label_as_utf8={}, index={}, buffer[index]={:02X?}",
+                label_as_utf8, index, buffer[index]
+            );
 
             self.labels.push(label_as_utf8);
 
@@ -590,17 +603,20 @@ pub struct DNSResourceRecord {
 #[derive(Debug)]
 pub enum RdData {
     A(A),
-    HINFO(HINFO)
+    AAAA(AAAA),
+    HINFO(HINFO),
 }
 
 impl<'a> FromNetworkOrder<'a> for DNSResourceRecord {
     fn from_network_bytes(&mut self, buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
         self.name.from_network_bytes(buffer)?;
+        debug!("name={}", self.name);
         self.r#type.from_network_bytes(buffer)?;
         self.class.from_network_bytes(buffer)?;
         self.ttl.from_network_bytes(buffer)?;
         self.rd_length.from_network_bytes(buffer)?;
 
+        // depending on the QType, extract and keep values
         match self.r#type {
             QType::A => {
                 let mut address: A = 0;
@@ -608,16 +624,67 @@ impl<'a> FromNetworkOrder<'a> for DNSResourceRecord {
 
                 self.rd_data = Some(RdData::A(address));
             }
-            QType::HINFO => {
+            QType::AAAA => {
+                let mut address: AAAA = [0u8; 16];
+                address.from_network_bytes(buffer)?;
 
+                self.rd_data = Some(RdData::AAAA(address));
+            }
+            QType::HINFO => {
+                let mut hinfo = HINFO::default();
+                hinfo.from_network_bytes(buffer)?;
+                debug!(
+                    "========================================= HINFO={:?}",
+                    hinfo
+                );
+
+                self.rd_data = Some(RdData::HINFO(hinfo));
             }
             _ => {
-                unimplemented!()
+                unimplemented!("type={:?} is not yet implemented !!", self.r#type)
             }
         }
 
         // if a pointer, get pointer value and call
         Ok(())
+    }
+}
+
+// Character string as described in: https://datatracker.ietf.org/doc/html/rfc1035#section-4.1.4
+#[derive(Debug, Default, PartialEq)]
+pub struct CharacterString {
+    pub length: u8,
+    pub data: String,
+}
+
+/// ```
+/// use std::io::Cursor;
+/// use dnslib::rfc1035::CharacterString;
+///
+/// let cs = CharacterString::from("www");
+/// assert_eq!(cs.length, 3u8);
+/// assert_eq!(cs.data, "www");
+/// ```  
+impl<'a> From<&'a str> for CharacterString {
+    fn from(s: &'a str) -> Self {
+        CharacterString {
+            length: s.len() as u8,
+            data: String::from(s),
+        }
+    }
+}
+
+/// ```
+/// use std::io::Cursor;
+/// use dnslib::rfc1035::CharacterString;
+///
+/// let cs = CharacterString::from("www");
+/// assert_eq!(cs.length, 3);
+/// assert_eq!(cs.to_string(), "www");
+/// ```
+impl<'a> fmt::Display for CharacterString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.data)
     }
 }
 
@@ -631,8 +698,8 @@ pub type A = u32;
 // HINFO RR
 #[derive(Debug, Default, DnsFromNetwork)]
 pub struct HINFO {
-    pub cpu: String,
-    pub os: String,
+    pub cpu: CharacterString,
+    pub os: CharacterString,
 }
 
 // CNAME RR
@@ -811,88 +878,49 @@ mod tests {
         assert_eq!(values.1, 12);
     }
 
-    // #[test]
-    // fn domain_name_from_position() {
-    //         const PACKET: &'static str = r#"
-    // 0000   76 86 81 a0 00 01 00 08 00 00 00 01 02 68 6b 00
-    // 0010   00 02 00 01 c0 0c 00 02 00 01 00 00 54 60 00 0e
-    // 0020   01 7a 05 68 6b 69 72 63 03 6e 65 74 c0 0c c0 0c
-    // 0030   00 02 00 01 00 00 54 60 00 04 01 64 c0 22 c0 0c
-    // 0040   00 02 00 01 00 00 54 60 00 04 01 78 c0 22 c0 0c
-    // 0050   00 02 00 01 00 00 54 60 00 04 01 75 c0 22 c0 0c
-    // 0060   00 02 00 01 00 00 54 60 00 04 01 63 c0 22 c0 0c
-    // 0070   00 02 00 01 00 00 54 60 00 04 01 74 c0 22 c0 0c
-    // 0080   00 02 00 01 00 00 54 60 00 04 01 76 c0 22 c0 0c
-    // 0090   00 02 00 01 00 00 54 60 00 04 01 79 c0 22 00 00
-    // 00a0   29 02 00 00 00 00 00 00 00
-    // "#;
+    #[test]
+    fn domain_name_from_position() {
+        const PACKET: &'static str = r#"
+    0000   76 86 81 a0 00 01 00 08 00 00 00 01 02 68 6b 00
+    0010   00 02 00 01 c0 0c 00 02 00 01 00 00 54 60 00 0e
+    0020   01 7a 05 68 6b 69 72 63 03 6e 65 74 c0 0c c0 0c
+    0030   00 02 00 01 00 00 54 60 00 04 01 64 c0 22 c0 0c
+    0040   00 02 00 01 00 00 54 60 00 04 01 78 c0 22 c0 0c
+    0050   00 02 00 01 00 00 54 60 00 04 01 75 c0 22 c0 0c
+    0060   00 02 00 01 00 00 54 60 00 04 01 63 c0 22 c0 0c
+    0070   00 02 00 01 00 00 54 60 00 04 01 74 c0 22 c0 0c
+    0080   00 02 00 01 00 00 54 60 00 04 01 76 c0 22 c0 0c
+    0090   00 02 00 01 00 00 54 60 00 04 01 79 c0 22 00 00
+    00a0   29 02 00 00 00 00 00 00 00
+    "#;
 
-    //         let v = get_sample_slice(PACKET);
-    //         let s = v.as_slice();
-    //         let cursor = std::io::Cursor::new(&s);
+        let v = get_sample_slice(PACKET);
+        let s = v.as_slice();
+        let cursor = std::io::Cursor::new(&s);
 
-    //         let mut dn = DomainName::default();
-    //         let i = dn.from_position(12, &cursor.get_ref()).unwrap();
-    //         assert_eq!(i, 16);
-    //         assert_eq!(
-    //             dn.labels,
-    //             &[
-    //                 LabelType::Label(CharacterString::from("hk")),
-    //                 LabelType::Root
-    //             ]
-    //         );
+        let mut dn = DomainName::default();
+        let i = dn.from_position(12, &cursor.get_ref()).unwrap();
+        assert_eq!(i, 16);
+        assert_eq!(&dn.to_string(), "hk.");
 
-    //         let mut dn = DomainName::default();
-    //         let i = dn.from_position(20, &cursor.get_ref()).unwrap();
-    //         assert_eq!(i, 22);
-    //         assert_eq!(
-    //             dn.labels,
-    //             &[
-    //                 LabelType::Label(CharacterString::from("hk")),
-    //                 LabelType::Root
-    //             ]
-    //         );
+        let mut dn = DomainName::default();
+        let i = dn.from_position(20, &cursor.get_ref()).unwrap();
+        assert_eq!(i, 22);
+        assert_eq!(&dn.to_string(), "hk.");
 
-    //         let mut dn = DomainName::default();
-    //         let i = dn.from_position(32, &cursor.get_ref()).unwrap();
-    //         assert_eq!(i, 46);
-    //         assert_eq!(
-    //             dn.labels,
-    //             &[
-    //                 LabelType::Label(CharacterString::from("z")),
-    //                 LabelType::Label(CharacterString::from("hkirc")),
-    //                 LabelType::Label(CharacterString::from("net")),
-    //                 LabelType::Label(CharacterString::from("hk")),
-    //                 LabelType::Root
-    //             ]
-    //         );
+        let mut dn = DomainName::default();
+        let i = dn.from_position(32, &cursor.get_ref()).unwrap();
+        assert_eq!(i, 46);
+        assert_eq!(&dn.to_string(), "z.hkirc.net.hk.");
 
-    //         let mut dn = DomainName::default();
-    //         let i = dn.from_position(58, &cursor.get_ref()).unwrap();
-    //         assert_eq!(i, 62);
-    //         assert_eq!(
-    //             dn.labels,
-    //             &[
-    //                 LabelType::Label(CharacterString::from("d")),
-    //                 LabelType::Label(CharacterString::from("hkirc")),
-    //                 LabelType::Label(CharacterString::from("net")),
-    //                 LabelType::Label(CharacterString::from("hk")),
-    //                 LabelType::Root
-    //             ]
-    //         );
+        let mut dn = DomainName::default();
+        let i = dn.from_position(58, &cursor.get_ref()).unwrap();
+        assert_eq!(i, 62);
+        assert_eq!(&dn.to_string(), "d.hkirc.net.hk.");
 
-    //         let mut dn = DomainName::default();
-    //         let i = dn.from_position(58 + 16, &cursor.get_ref()).unwrap();
-    //         assert_eq!(i, 62 + 16);
-    //         assert_eq!(
-    //             dn.labels,
-    //             &[
-    //                 LabelType::Label(CharacterString::from("x")),
-    //                 LabelType::Label(CharacterString::from("hkirc")),
-    //                 LabelType::Label(CharacterString::from("net")),
-    //                 LabelType::Label(CharacterString::from("hk")),
-    //                 LabelType::Root
-    //             ]
-    //         );
-    //     }
+        let mut dn = DomainName::default();
+        let i = dn.from_position(58 + 16, &cursor.get_ref()).unwrap();
+        assert_eq!(i, 62 + 16);
+        assert_eq!(&dn.to_string(), "x.hkirc.net.hk.");
+    }
 }

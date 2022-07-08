@@ -3,12 +3,14 @@
 use std::fmt;
 use std::io::Cursor;
 
+use log::debug;
+
 use dnslib::{
     error::DNSResult,
     network_order::FromNetworkOrder,
     rfc1035::{
-        DNSPacketFlags, DNSPacketHeader, DNSQuery, DNSQuestion, DomainName, PacketType, QType, A,
-        AAAA, HINFO, MX, NS, SOA, TXT,
+        DNSPacketFlags, DNSPacketHeader, DNSQuery, DNSQuestion, DNSResourceRecord, DNSResponse,
+        DomainName, PacketType, QType, RdData, A, AAAA, HINFO, MX, NS, SOA, TXT,
     },
 };
 
@@ -108,21 +110,6 @@ impl fmt::Display for DisplayWrapper<'_, DNSQuestion> {
     }
 }
 
-// impl fmt::Display for DisplayWrapper<'_, DNSQuery<'_>> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         // header first
-//         write!(f, "{} ", DisplayWrapper(&self.0.header))?;
-
-//         // all questions (usually only 1)
-//         for (i, question) in self.0.questions.iter().enumerate() {
-//             write!(f, "question#{}: [{}]", i + 1, DisplayWrapper(question))?;
-//         }
-
-//         // now OPT data for EDNS0
-//         write!(f, "")
-//     }
-// }
-
 impl fmt::Display for DisplayWrapper<'_, DNSQuery> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // header first
@@ -139,44 +126,101 @@ impl fmt::Display for DisplayWrapper<'_, DNSQuery> {
 }
 
 // The global display method
-pub fn display_data<'a>(cursor: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
-    // receive data
-    let mut response = DNSQuestion::default();
-    response.from_network_bytes(cursor)?;
-    //println!("{:#?}", response);
+pub fn display_data(dns_response: &DNSResponse) -> DNSResult<()> {
+    debug!("response: {:?}", &dns_response);
+    debug!("response header: {:?}", dns_response.header);
 
-    // check out RR
-    print!("qtype:{:?} qclass:{:?}\t", response.r#type, response.class);
-    match response.r#type {
-        QType::A => {
-            let mut ip = A::default();
-            ip.from_network_bytes(cursor)?;
-            println!("{}", std::net::Ipv4Addr::from(ip));
+    // print out the header first
+    println!("ANSWER: {}", DisplayWrapper(&dns_response.header));
+
+    // print out answers
+    for answer in &dns_response.answer {
+        display_resource(answer);
+    }
+
+    if dns_response.authority.is_some() {
+        for authorative in dns_response.authority.as_ref().unwrap() {
+            display_resource(authorative);
         }
-        QType::HINFO => {
-            let mut hinfo = HINFO::default();
-            hinfo.from_network_bytes(cursor)?;
-            println!("HINFO: {:?}", hinfo);
-        }
-        QType::AAAA => {
-            let mut aaaa = AAAA::default();
-            aaaa.from_network_bytes(cursor)?;
-            println!("{}", std::net::Ipv6Addr::from(aaaa));
-        }
-        QType::SOA => {
-            let mut soa = SOA::default();
-            soa.from_network_bytes(cursor)?;
-            println!("{}", DisplayWrapper(&soa));
-        }
-        QType::TXT => {
-            let mut txt = TXT::default();
-            txt.from_network_bytes(cursor)?;
-            println!("\"{}\"", txt);
-        }
-        QType::NS => rr_display!(NS, cursor),
-        QType::MX => rr_display!(MX, cursor),
-        _ => unimplemented!(),
     }
 
     Ok(())
 }
+
+pub fn display_resource(rr: &DNSResourceRecord) {
+    match rr.r#type {
+        QType::A => match &rr.rd_data {
+            Some(RdData::A(ipv4)) => {
+                println!("{}", std::net::Ipv4Addr::from(*ipv4));
+            }
+            _ => panic!("oups"),
+        },
+        QType::HINFO => match &rr.rd_data {
+            Some(RdData::HINFO(hinfo)) => {
+                println!("HINFO: {:?}", hinfo);
+            }
+            _ => panic!("oups"),
+        },
+        QType::AAAA => match &rr.rd_data {
+            Some(RdData::AAAA(ipv6)) => {
+                println!("{}", std::net::Ipv6Addr::from(*ipv6));
+            }
+            _ => panic!("oups"),
+        },
+        // QType::SOA => {
+        //     let mut soa = SOA::default();
+        //     soa.from_network_bytes(cursor)?;
+        //     println!("{}", DisplayWrapper(&soa));
+        // }
+        // QType::TXT => {
+        //     let mut txt = TXT::default();
+        //     txt.from_network_bytes(cursor)?;
+        //     println!("\"{}\"", txt);
+        // }
+        // QType::NS => rr_display!(NS, cursor),
+        // QType::MX => rr_display!(MX, cursor),
+        _ => unimplemented!(),
+    }
+}
+
+// pub fn display_data<'a>(cursor: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
+//     // receive data
+//     let mut response = DNSQuestion::default();
+//     response.from_network_bytes(cursor)?;
+//     //println!("{:#?}", response);
+
+//     // check out RR
+//     print!("qtype:{:?} qclass:{:?}\t", response.r#type, response.class);
+//     match response.r#type {
+//         QType::A => {
+//             let mut ip = A::default();
+//             ip.from_network_bytes(cursor)?;
+//             println!("{}", std::net::Ipv4Addr::from(ip));
+//         }
+//         QType::HINFO => {
+//             let mut hinfo = HINFO::default();
+//             hinfo.from_network_bytes(cursor)?;
+//             println!("HINFO: {:?}", hinfo);
+//         }
+//         QType::AAAA => {
+//             let mut aaaa = AAAA::default();
+//             aaaa.from_network_bytes(cursor)?;
+//             println!("{}", std::net::Ipv6Addr::from(aaaa));
+//         }
+//         QType::SOA => {
+//             let mut soa = SOA::default();
+//             soa.from_network_bytes(cursor)?;
+//             println!("{}", DisplayWrapper(&soa));
+//         }
+//         QType::TXT => {
+//             let mut txt = TXT::default();
+//             txt.from_network_bytes(cursor)?;
+//             println!("\"{}\"", txt);
+//         }
+//         QType::NS => rr_display!(NS, cursor),
+//         QType::MX => rr_display!(MX, cursor),
+//         _ => unimplemented!(),
+//     }
+
+//     Ok(())
+// }

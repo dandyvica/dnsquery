@@ -1,11 +1,64 @@
 //! All functions/trait to convert DNS structures to network order back & forth
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use std::io::{Cursor, Result};
+use std::io::{Cursor, Result, Seek, SeekFrom};
 
 use crate::derive_enum;
 use crate::error::{DNSError, DNSResult};
 use crate::network_order::{FromNetworkOrder, ToNetworkOrder};
-use crate::rfc1035::{DNSPacketFlags, DomainName, OpCode, PacketType, QClass, QType, ResponseCode};
+use crate::rfc1035::{
+    CharacterString, DNSPacketFlags, DomainName, OpCode, PacketType, QClass, QType, ResponseCode,
+};
+
+impl<'a> ToNetworkOrder for CharacterString {
+    /// ```
+    /// use dnslib::rfc1035::CharacterString;
+    /// use dnslib::network_order::ToNetworkOrder;
+    ///
+    /// let cs = CharacterString::from("www");
+    /// let mut buffer: Vec<u8> = Vec::new();
+    ///
+    /// assert_eq!(cs.to_network_bytes(&mut buffer).unwrap(), 4);
+    /// assert_eq!(&buffer, &[0x03, 0x77, 0x77, 0x77]);
+    /// ```  
+    fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
+        buffer.write_u8(self.length)?;
+        self.data.to_network_bytes(buffer)?;
+
+        Ok(self.length as usize + 1)
+    }
+}
+
+impl<'a> FromNetworkOrder<'a> for CharacterString {
+    /// ```
+    /// use std::io::Cursor;
+    /// use dnslib::network_order::FromNetworkOrder;
+    /// use dnslib::rfc1035::CharacterString;
+    ///
+    /// let mut buffer = Cursor::new([0x06_u8, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65].as_slice());
+    /// let mut cs = CharacterString::default();
+    /// assert!(cs.from_network_bytes(&mut buffer).is_ok());
+    /// assert_eq!(cs.length, 6u8);
+    /// assert_eq!(cs.data, "google");
+    /// ```    
+    fn from_network_bytes(&mut self, buffer: &mut Cursor<&'a [u8]>) -> DNSResult<()> {
+        // get a reference on [u8]
+        let position = buffer.position() as usize;
+        let inner_data = buffer.get_ref();
+
+        // first char is the string length
+        self.length = inner_data[position] as u8;
+
+        // move the cursor forward
+        buffer.seek(SeekFrom::Current(self.length as i64))?;
+
+        // save data
+        self.data = String::from_utf8_lossy(
+            &buffer.get_ref()[position + 1..position + self.length as usize + 1],
+        )
+        .to_string();
+        Ok(())
+    }
+}
 
 impl ToNetworkOrder for DomainName {
     /// ```
@@ -60,6 +113,7 @@ impl<'a> FromNetworkOrder<'a> for DomainName {
 
         // set new position
         buffer.set_position(new_position as u64);
+        println!("domain============>{}, new_pos={}", self, new_position);
 
         // if a pointer, get pointer value and call
         Ok(())

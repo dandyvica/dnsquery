@@ -172,8 +172,16 @@ impl<'a> FromNetworkOrder<'a> for &'a str {
 }
 
 impl ToNetworkOrder for String {
-    fn to_network_bytes(&self, _: &mut Vec<u8>) -> Result<usize> {
-        Ok(0)
+    /// ```
+    /// use dnslib::network_order::ToNetworkOrder;
+    ///
+    /// let mut buffer: Vec<u8> = Vec::new();
+    /// assert!(String::from("wxy").to_network_bytes(&mut buffer).is_ok());
+    /// assert_eq!(buffer, &[0x77, 0x78, 0x79]);
+    /// ```    
+    fn to_network_bytes(&self, buffer: &mut Vec<u8>) -> Result<usize> {
+        buffer.append(&mut self.as_bytes().to_vec());
+        Ok(self.len())
     }
 }
 

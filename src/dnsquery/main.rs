@@ -8,8 +8,10 @@ use log::debug;
 use dnslib::{
     error::DNSResult,
     format_buffer,
-    network_order::{FromNetworkOrder},
-    rfc1035::{DNSPacketHeader, DNSQuery, DNSResponse, DNSQuestion, ResponseCode, MAX_DNS_PACKET_SIZE, OPT},
+    network_order::FromNetworkOrder,
+    rfc1035::{
+        DNSPacketHeader, DNSQuery, DNSQuestion, DNSResponse, ResponseCode, MAX_DNS_PACKET_SIZE, OPT,
+    },
     util::pretty_cursor,
 };
 
@@ -68,12 +70,9 @@ fn receive_answer(socket: &UdpSocket, debug: bool) -> DNSResult<usize> {
 
     // get response
     let mut dns_response = DNSResponse::default();
-    dns_response.from_network_bytes(&mut cursor)?;    
-
-    debug!("response header: {:?}", dns_response.header);
-    debug!("response: {:?}", &dns_response);
-
-    println!("ANSWER: {}", DisplayWrapper(&dns_response.header));
+    debug!("==================> before dns_response.from_network_bytes()");
+    dns_response.from_network_bytes(&mut cursor)?;
+    debug!("==================> after dns_response.from_network_bytes()");
 
     // check return code
     if dns_response.header.flags.response_code != ResponseCode::NoError {
@@ -81,6 +80,10 @@ fn receive_answer(socket: &UdpSocket, debug: bool) -> DNSResult<usize> {
         std::process::exit(1);
     }
 
+    // display data to user
+    debug!("before display_data()");
+    display_data(&dns_response)?;
+    debug!("after display_data()");
 
     Ok(received)
 }
